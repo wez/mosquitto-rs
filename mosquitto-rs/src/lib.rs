@@ -1,8 +1,8 @@
-
-pub mod lowlevel;
 pub mod error;
+pub mod lowlevel;
 
 pub use error::*;
+pub use lowlevel::QoS;
 
 #[cfg(test)]
 mod tests {

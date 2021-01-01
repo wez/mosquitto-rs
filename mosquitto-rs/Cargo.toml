@@ -8,4 +8,6 @@ edition = "2018"
 
 [dependencies]
 thiserror = "1.0"
+lazy_static = "1.4"
 libmosquitto-sys = {version="0.1", path="../libmosquitto-sys" }
+libc = "0.2"
