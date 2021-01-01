@@ -1,0 +1,2 @@
+[workspace]
+members = ["libmosquitto-sys", "mosquitto-rs"]
