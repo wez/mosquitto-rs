@@ -1,8 +1,8 @@
 use crate::Error;
 pub(crate) use libmosquitto_sys as sys;
 use std::convert::TryInto;
-use std::ffi::CString;
-use std::os::raw::c_int;
+use std::ffi::{CStr, CString};
+use std::os::raw::{c_int, c_void};
 use std::sync::Once;
 
 static INIT: Once = Once::new();
@@ -162,7 +162,7 @@ impl Mosq {
         payload: &[u8],
         qos: QoS,
         retain: bool,
-    ) -> Result<c_int, Error> {
+    ) -> Result<MessageId, Error> {
         let mut mid = 0;
         let err = unsafe {
             sys::mosquitto_publish(
@@ -172,13 +172,156 @@ impl Mosq {
                 payload
                     .len()
                     .try_into()
-                    .map_err(|_| Error::Mosq(sys::mosq_err_t::MOSQ_ERR_OVERSIZE_PACKET))?,
+                    .map_err(|_| Error::Mosq(sys::mosq_err_t::MOSQ_ERR_PAYLOAD_SIZE))?,
                 payload.as_ptr() as *const _,
                 qos as c_int,
                 retain,
             )
         };
         Error::result(err, mid)
+    }
+
+    pub fn subscribe(&mut self, pattern: &str, qos: QoS) -> Result<MessageId, Error> {
+        let mut mid = 0;
+        let err = unsafe {
+            sys::mosquitto_subscribe(self.m, &mut mid, cstr(pattern)?.as_ptr(), qos as _)
+        };
+        Error::result(err, mid)
+    }
+
+    pub fn set_callbacks<C: Callbacks + 'static>(&mut self, cb: C) {
+        let cb = CallbackWrapper { cb: Box::new(cb) };
+        // Double-box to avoid the compiler complaining about casting trait
+        // pointers when subsequently calling Box::from_raw
+        let cb: Box<CallbackWrapper> = Box::new(cb);
+        let cb: *mut CallbackWrapper = Box::into_raw(cb);
+        unsafe {
+            // Mosq now owns cb
+            sys::mosquitto_user_data_set(self.m, cb as *mut c_void);
+
+            sys::mosquitto_connect_callback_set(self.m, Some(CallbackWrapper::connect));
+            sys::mosquitto_disconnect_callback_set(self.m, Some(CallbackWrapper::disconnect));
+            sys::mosquitto_publish_callback_set(self.m, Some(CallbackWrapper::publish));
+            sys::mosquitto_subscribe_callback_set(self.m, Some(CallbackWrapper::subscribe));
+            sys::mosquitto_message_callback_set(self.m, Some(CallbackWrapper::message));
+        }
+    }
+
+    pub fn clear_callbacks(&mut self) {
+        unsafe {
+            let cb = sys::mosquitto_userdata(self.m) as *mut CallbackWrapper;
+            if !cb.is_null() {
+                let cb = Box::from_raw(cb);
+                drop(cb);
+
+                sys::mosquitto_user_data_set(self.m, std::ptr::null_mut());
+            }
+        }
+    }
+
+    pub fn loop_until_explicitly_disconnected(
+        &mut self,
+        timeout_milliseconds: c_int,
+    ) -> Result<(), Error> {
+        unsafe {
+            let max_packets = 1;
+            Error::result(
+                sys::mosquitto_loop_forever(self.m, timeout_milliseconds, max_packets),
+                (),
+            )
+        }
+    }
+}
+
+struct CallbackWrapper {
+    cb: Box<dyn Callbacks>,
+}
+
+fn with_transient_client<F: FnOnce(&mut Mosq)>(m: *mut sys::mosquitto, func: F) {
+    let mut client = Mosq { m };
+    func(&mut client);
+    std::mem::forget(client);
+}
+
+impl CallbackWrapper {
+    unsafe fn resolve_self<'a>(cb: *mut c_void) -> &'a mut CallbackWrapper {
+        &mut *(cb as *mut CallbackWrapper)
+    }
+
+    unsafe extern "C" fn connect(m: *mut sys::mosquitto, cb: *mut c_void, rc: c_int) {
+        let cb = Self::resolve_self(cb);
+        with_transient_client(m, |client| {
+            cb.cb.on_connect(client, rc);
+        });
+    }
+
+    unsafe extern "C" fn disconnect(m: *mut sys::mosquitto, cb: *mut c_void, rc: c_int) {
+        let cb = Self::resolve_self(cb);
+        with_transient_client(m, |client| {
+            cb.cb.on_disconnect(client, rc);
+        });
+    }
+
+    unsafe extern "C" fn publish(m: *mut sys::mosquitto, cb: *mut c_void, mid: MessageId) {
+        let cb = Self::resolve_self(cb);
+        with_transient_client(m, |client| {
+            cb.cb.on_publish(client, mid);
+        });
+    }
+
+    unsafe extern "C" fn subscribe(
+        m: *mut sys::mosquitto,
+        cb: *mut c_void,
+        mid: MessageId,
+        qos_count: c_int,
+        granted_qos: *const c_int,
+    ) {
+        let cb = Self::resolve_self(cb);
+        with_transient_client(m, |client| {
+            let granted_qos = std::slice::from_raw_parts(granted_qos, qos_count as usize);
+            let granted_qos: Vec<QoS> = granted_qos.iter().map(QoS::from_int).collect();
+            cb.cb.on_subscribe(client, mid, &granted_qos);
+        });
+    }
+
+    unsafe extern "C" fn message(
+        m: *mut sys::mosquitto,
+        cb: *mut c_void,
+        msg: *const sys::mosquitto_message,
+    ) {
+        let cb = Self::resolve_self(cb);
+        with_transient_client(m, |client| {
+            let msg = &*msg;
+            let topic = CStr::from_ptr(msg.topic);
+            let topic = topic.to_string_lossy().to_string();
+            cb.cb.on_message(
+                client,
+                msg.mid,
+                &topic,
+                std::slice::from_raw_parts(msg.payload as *const u8, msg.payloadlen as usize),
+                QoS::from_int(&msg.qos),
+                msg.retain,
+            );
+        });
+    }
+}
+
+pub type MessageId = c_int;
+
+pub trait Callbacks {
+    fn on_connect(&self, _client: &mut Mosq, _reason: c_int) {}
+    fn on_disconnect(&self, _client: &mut Mosq, _reason: c_int) {}
+    fn on_publish(&self, _client: &mut Mosq, _mid: MessageId) {}
+    fn on_subscribe(&self, _client: &mut Mosq, _mid: MessageId, _granted_qos: &[QoS]) {}
+    fn on_message(
+        &self,
+        _client: &mut Mosq,
+        _mid: MessageId,
+        _topic: &str,
+        _payload: &[u8],
+        _qos: QoS,
+        _retain: bool,
+    ) {
     }
 }
 
@@ -189,9 +332,21 @@ pub enum QoS {
     ExactlyOnce = 2,
 }
 
+impl QoS {
+    fn from_int(i: &c_int) -> QoS {
+        match i {
+            0 => Self::AtMostOnce,
+            1 => Self::AtLeastOnce,
+            2 => Self::ExactlyOnce,
+            _ => Self::ExactlyOnce,
+        }
+    }
+}
+
 impl Drop for Mosq {
     fn drop(&mut self) {
         unsafe {
+            self.clear_callbacks();
             sys::mosquitto_destroy(self.m);
         }
     }
