@@ -16,6 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
+      with:
+         submodules: "recursive"
     - name: Build
       run: cargo build --all --verbose
     - name: Examples
@@ -35,17 +37,33 @@ jobs:
         sudo -n apt-get update
         sudo -n apt-get install -y libmosquitto-dev
     - name: Build
-      run: cargo build -p mosquitto-rs --no-default-features --verbose
+      run: cd mosquitto-rs && cargo build --no-default-features --verbose
     - name: Examples
-      run: cargo build -p mosquitto-rs --no-default-features --verbose --examples
+      run: cd mosquitto-rs && cargo build --no-default-features --verbose --examples
     - name: Run tests
-      run: cargo test -p mosquitto-rs --no-default-features --verbose
-  not-linux:
+      run: cd mosquitto-rs && cargo test --no-default-features --verbose
+  mac:
     strategy:
       fail-fast: false
-    runs-on: ["macos-latest", "vs2017-win2016"]
+    runs-on: "macos-latest"
     steps:
     - uses: actions/checkout@v2
+      with:
+         submodules: "recursive"
+    - name: Build
+      run: cargo build -p mosquitto-rs --all-features --verbose
+    - name: Examples
+      run: cargo build -p mosquitto-rs --all-features --verbose --examples
+    - name: Run tests
+      run: cargo test -p mosquitto-rs --all-features --verbose
+  windows:
+    strategy:
+      fail-fast: false
+    runs-on: "vs2017-win2016"
+    steps:
+    - uses: actions/checkout@v2
+      with:
+         submodules: "recursive"
     - name: Build
       run: cargo build -p mosquitto-rs --all-features --verbose
     - name: Examples
