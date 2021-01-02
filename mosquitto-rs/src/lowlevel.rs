@@ -361,7 +361,11 @@ impl<CB: Callbacks> Mosq<CB> {
 
     /// Sets an option with an integer value
     pub fn set_int_option(&self, option: sys::mosq_opt_t, value: c_int) -> Result<(), Error> {
-        let err = unsafe { sys::mosquitto_int_option(self.m, option, value) };
+        // Ideally we'd use sys::mosquitto_int_option here, but it isn't present in 1.4
+        let mut value = value;
+        let err = unsafe {
+            sys::mosquitto_opts_set(self.m, option, &mut value as *mut c_int as *mut c_void)
+        };
         Error::result(err, ())
     }
 
@@ -743,7 +747,6 @@ mod test {
         let mosq = Mosq::with_auto_id(()).unwrap();
         mosq.set_username_and_password(None, None).unwrap();
         mosq.set_username_and_password(Some("user"), None).unwrap();
-        assert!(mosq.set_username_and_password(None, Some("pass")).is_err());
         mosq.set_username_and_password(Some("user"), Some("pass"))
             .unwrap();
     }
@@ -751,7 +754,7 @@ mod test {
     #[test]
     fn setting_some_options() {
         let mosq = Mosq::with_auto_id(()).unwrap();
-        mosq.set_int_option(sys::mosq_opt_t::MOSQ_OPT_RECEIVE_MAXIMUM, 20)
+        mosq.set_int_option(sys::mosq_opt_t::MOSQ_OPT_PROTOCOL_VERSION, 3)
             .unwrap();
     }
 }
