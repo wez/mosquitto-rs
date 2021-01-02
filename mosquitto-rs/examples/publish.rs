@@ -1,9 +1,8 @@
-use mosquitto_rs::lowlevel::*;
 use mosquitto_rs::*;
 use std::cell::RefCell;
 
 fn main() -> Result<(), Error> {
-    let mut mosq = Mosq::with_id("woot", false)?;
+    let mosq = Mosq::with_id("woot", false)?;
 
     #[derive(Debug)]
     struct Handlers {
@@ -48,7 +47,7 @@ fn main() -> Result<(), Error> {
             &self,
             mosq: &mut Mosq,
             mid: MessageId,
-            topic: &str,
+            topic: String,
             payload: &[u8],
             qos: QoS,
             retain: bool,
@@ -61,11 +60,15 @@ fn main() -> Result<(), Error> {
         }
     }
 
+    mosq.start_loop_thread()?;
+
     mosq.set_callbacks(Handlers {
         data: RefCell::new(0),
     });
-    mosq.connect("localhost", 1883, 5, None)?;
-    mosq.loop_until_explicitly_disconnected(10)?;
+    mosq.connect_non_blocking("localhost", 1883, 5, None)?;
+    mosq.loop_until_explicitly_disconnected(std::time::Duration::from_secs(10))?;
+
+    println!("handler data is: {:?}", mosq.get_callbacks::<Handlers>());
 
     Ok(())
 }

@@ -15,6 +15,7 @@ fn init_library() {
     });
 }
 
+/// Represents the version of the linked mosquitto client library
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct LibraryVersion {
     /// The major version of the library
@@ -54,6 +55,8 @@ pub(crate) fn cstr(s: &str) -> Result<CString, Error> {
     Ok(CString::new(s)?)
 }
 
+/// `Mosq` is the low-level mosquitto client.
+/// You probably want to look at [Client](struct.Client.html) instead.
 pub struct Mosq {
     m: *mut sys::mosquitto,
 }
@@ -92,8 +95,12 @@ impl Mosq {
         }
     }
 
+    /// Configure the client with an optional username and password.
+    /// The default is `None` for both.
+    /// Whether you need to configure these credentials depends on the
+    /// broker configuration.
     pub fn set_username_and_password(
-        &mut self,
+        &self,
         username: Option<&str>,
         password: Option<&str>,
     ) -> Result<(), Error> {
@@ -120,8 +127,19 @@ impl Mosq {
         Error::result(err, ())
     }
 
+    /// Connect to the broker on the specified host and port.
+    /// port is typically 1883 for mqtt, but it may be different
+    /// in your environment.
+    ///
+    /// `keep_alive_seconds` specifies the interval at which
+    /// keepalive requests are sent.  mosquitto has a minimum value
+    /// of 5 for this and will generate an error if you use a smaller
+    /// value.
+    ///
+    /// `bind_address` can be used to specify the outgoing interface
+    /// for the connection.
     pub fn connect(
-        &mut self,
+        &self,
         host: &str,
         port: c_int,
         keep_alive_seconds: c_int,
@@ -148,16 +166,78 @@ impl Mosq {
         Error::result(err, ())
     }
 
-    pub fn reconnect(&mut self) -> Result<(), Error> {
+    /// Connect to the broker on the specified host and port,
+    /// but don't block for the connection portion.
+    /// (Note that name resolution may still block!).
+    ///
+    /// The connection will be completed later by running the message loop
+    /// using either `loop_until_explicitly_disconnected` or
+    /// `start_loop_thread`.
+    ///
+    /// port is typically 1883 for mqtt, but it may be different
+    /// in your environment.
+    ///
+    /// `keep_alive_seconds` specifies the interval at which
+    /// keepalive requests are sent.  mosquitto has a minimum value
+    /// of 5 for this and will generate an error if you use a smaller
+    /// value.
+    ///
+    /// `bind_address` can be used to specify the outgoing interface
+    /// for the connection.
+    pub fn connect_non_blocking(
+        &self,
+        host: &str,
+        port: c_int,
+        keep_alive_seconds: c_int,
+        bind_address: Option<&str>,
+    ) -> Result<(), Error> {
+        let host = cstr(host)?;
+        let ba;
+        let bind_address = match bind_address {
+            Some(b) => {
+                ba = cstr(b)?;
+                ba.as_ptr()
+            }
+            None => std::ptr::null(),
+        };
+        let err = unsafe {
+            sys::mosquitto_connect_bind_async(
+                self.m,
+                host.as_ptr(),
+                port,
+                keep_alive_seconds,
+                bind_address,
+            )
+        };
+        Error::result(err, ())
+    }
+
+    /// Reconnect a disconnected client using the same parameters
+    /// as were originally used to connect it.
+    pub fn reconnect(&self) -> Result<(), Error> {
         Error::result(unsafe { sys::mosquitto_reconnect(self.m) }, ())
     }
 
-    pub fn disconnect(&mut self) -> Result<(), Error> {
+    /// Disconnect the client.
+    /// This will cause the message loop to terminate.
+    pub fn disconnect(&self) -> Result<(), Error> {
         Error::result(unsafe { sys::mosquitto_disconnect(self.m) }, ())
     }
 
+    /// Publish a message to the specified topic.
+    ///
+    /// The payload size can be 0-283, 435 or 455 bytes; other values
+    /// will generate an error result.
+    ///
+    /// `retain` will set the message to be retained by the broker,
+    /// and delivered to new subscribers.
+    ///
+    /// Returns the assigned MessageId value for the publish.
+    /// The publish may not complete immediately.
+    /// You can use [set_callbacks](#method.set_callbacks) to register
+    /// an `on_publish` event to determine when it completes.
     pub fn publish(
-        &mut self,
+        &self,
         topic: &str,
         payload: &[u8],
         qos: QoS,
@@ -181,7 +261,15 @@ impl Mosq {
         Error::result(err, mid)
     }
 
-    pub fn subscribe(&mut self, pattern: &str, qos: QoS) -> Result<MessageId, Error> {
+    /// Establish a subscription for topics that match `pattern`.
+    ///
+    /// You must use [set_callbacks](#method.set_callbacks) to register
+    /// an `on_message` handler to process the received messages.
+    ///
+    /// Returns the MessageId of the subscription request; the subscriptions
+    /// won't be active until the broker has processed the request.
+    /// You can use an `on_subscribe` handler to determine when that is ready.
+    pub fn subscribe(&self, pattern: &str, qos: QoS) -> Result<MessageId, Error> {
         let mut mid = 0;
         let err = unsafe {
             sys::mosquitto_subscribe(self.m, &mut mid, cstr(pattern)?.as_ptr(), qos as _)
@@ -189,7 +277,11 @@ impl Mosq {
         Error::result(err, mid)
     }
 
-    pub fn set_callbacks<C: Callbacks + 'static>(&mut self, cb: C) {
+    /// Registers a set of callbacks with the client.
+    /// Ownership of the callbacks is transferred to the client.
+    /// You can obtain a reference to the callbacks via
+    /// [get_callbacks](#method.get_callbacks)
+    pub fn set_callbacks<C: Callbacks + 'static>(&self, cb: C) {
         let cb = CallbackWrapper { cb: Box::new(cb) };
         // Double-box to avoid the compiler complaining about casting trait
         // pointers when subsequently calling Box::from_raw
@@ -207,7 +299,22 @@ impl Mosq {
         }
     }
 
-    pub fn clear_callbacks(&mut self) {
+    /// Returns a reference to the callbacks previously registered
+    /// via `set_callbacks`.
+    pub fn get_callbacks<T: Callbacks>(&self) -> Option<&T> {
+        unsafe {
+            let cb = sys::mosquitto_userdata(self.m) as *mut CallbackWrapper;
+            if cb.is_null() {
+                None
+            } else {
+                let cb = &mut *(cb as *mut CallbackWrapper);
+                cb.cb.downcast_ref()
+            }
+        }
+    }
+
+    /// Clears the callbacks from the client.
+    pub fn clear_callbacks(&self) {
         unsafe {
             let cb = sys::mosquitto_userdata(self.m) as *mut CallbackWrapper;
             if !cb.is_null() {
@@ -219,17 +326,42 @@ impl Mosq {
         }
     }
 
+    /// Runs the message loop for the client.
+    /// This method will not return until the client is explicitly
+    /// disconnected via the `disconnect` method.
+    ///
+    /// `timeout` specifies the internal sleep duration between
+    /// iterations.
     pub fn loop_until_explicitly_disconnected(
-        &mut self,
-        timeout_milliseconds: c_int,
+        &self,
+        timeout: std::time::Duration,
     ) -> Result<(), Error> {
         unsafe {
             let max_packets = 1;
             Error::result(
-                sys::mosquitto_loop_forever(self.m, timeout_milliseconds, max_packets),
+                sys::mosquitto_loop_forever(
+                    self.m,
+                    timeout
+                        .as_millis()
+                        .try_into()
+                        .map_err(|_| Error::Mosq(sys::mosq_err_t::MOSQ_ERR_INVAL))?,
+                    max_packets,
+                ),
                 (),
             )
         }
+    }
+
+    /// Starts a new thread to run the message loop for the client.
+    /// The thread will run until the client is disconnected,
+    /// or until `stop_loop_thread` is called.
+    pub fn start_loop_thread(&self) -> Result<(), Error> {
+        unsafe { Error::result(sys::mosquitto_loop_start(self.m), ()) }
+    }
+
+    /// Stops the message loop thread started via `start_loop_thread`
+    pub fn stop_loop_thread(&self, force_cancel: bool) -> Result<(), Error> {
+        unsafe { Error::result(sys::mosquitto_loop_stop(self.m, force_cancel), ()) }
     }
 }
 
@@ -297,7 +429,7 @@ impl CallbackWrapper {
             cb.cb.on_message(
                 client,
                 msg.mid,
-                &topic,
+                topic,
                 std::slice::from_raw_parts(msg.payload as *const u8, msg.payloadlen as usize),
                 QoS::from_int(&msg.qos),
                 msg.retain,
@@ -306,30 +438,65 @@ impl CallbackWrapper {
     }
 }
 
+/// Represents an individual message identifier.
+/// This is used in this client to determine when a message
+/// has been sent.
 pub type MessageId = c_int;
 
-pub trait Callbacks {
+/// Defines handlers that can be used to determine when various
+/// functions have completed.
+pub trait Callbacks: downcast_rs::Downcast {
+    /// called when the connection has been acknowledged by the broker.
     fn on_connect(&self, _client: &mut Mosq, _reason: c_int) {}
+
+    /// Called when the broker has received the DISCONNECT command
     fn on_disconnect(&self, _client: &mut Mosq, _reason: c_int) {}
+
+    /// Called when the message identifier by `mid` has been sent
+    /// to the broker successfully.
     fn on_publish(&self, _client: &mut Mosq, _mid: MessageId) {}
+
+    /// Called when the broker responds to a subscription request.
     fn on_subscribe(&self, _client: &mut Mosq, _mid: MessageId, _granted_qos: &[QoS]) {}
+
+    /// Called when a message matching a subscription is received
+    /// from the broker
     fn on_message(
         &self,
         _client: &mut Mosq,
         _mid: MessageId,
-        _topic: &str,
+        _topic: String,
         _payload: &[u8],
         _qos: QoS,
         _retain: bool,
     ) {
     }
 }
+downcast_rs::impl_downcast!(Callbacks);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum QoS {
+    /// This is the simplest, lowest-overhead method of sending a message. The client simply
+    /// publishes the message, and there is no acknowledgement by the broker.
     AtMostOnce = 0,
+    /// This method guarantees that the message will be transferred successfully to the broker.
+    /// The broker sends an acknowledgement back to the sender, but in the event that that the
+    /// acknowledgement is lost the sender won't realise the message has got through, so will send
+    /// the message again. The client will re-send until it gets the broker's acknowledgement.
+    /// This means that sending is guaranteed, although the message may reach the broker more than
+    /// once.
     AtLeastOnce = 1,
+    /// This is the highest level of service, in which there is a sequence of four messages between
+    /// the sender and the receiver, a kind of handshake to confirm that the main message has been
+    /// sent and that the acknowledgement has been received.  When the handshake has been
+    /// completed, both sender and receiver are sure that the message was sent exactly once.
     ExactlyOnce = 2,
+}
+
+impl Default for QoS {
+    fn default() -> QoS {
+        QoS::AtMostOnce
+    }
 }
 
 impl QoS {
