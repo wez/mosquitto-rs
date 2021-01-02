@@ -1,6 +1,6 @@
 use crate::lowlevel::sys::{mosq_err_t, mosq_opt_t};
 use crate::lowlevel::{Callbacks, MessageId, Mosq, QoS};
-use crate::{Error, PasswdCallback};
+use crate::{ConnectionStatus, Error, PasswdCallback};
 use async_channel::{bounded, unbounded, Receiver, Sender};
 use std::collections::HashMap;
 use std::os::raw::c_int;
@@ -8,7 +8,7 @@ use std::path::Path;
 use std::sync::Mutex;
 
 struct Handler {
-    connect: Mutex<Option<Sender<c_int>>>,
+    connect: Mutex<Option<Sender<ConnectionStatus>>>,
     mids: Mutex<HashMap<MessageId, Sender<MessageId>>>,
     subscriber_tx: Mutex<Sender<Message>>,
     subscriber_rx: Mutex<Option<Receiver<Message>>>,
@@ -106,7 +106,7 @@ pub struct Message {
 }
 
 impl Callbacks for Handler {
-    fn on_connect(&self, client: &mut Mosq, reason: c_int) {
+    fn on_connect(&self, client: &mut Mosq, reason: ConnectionStatus) {
         let mut connect = self.connect.lock().unwrap();
         if let Some(connect) = connect.take() {
             if connect.try_send(reason).is_err() {
@@ -208,17 +208,16 @@ impl Client {
     /// connect completes when the broker acknowledges the CONNECT
     /// command.
     ///
-    /// Yields the connection return code; the value depends on the
-    /// version of the MQTT protocol in use:
-    /// For MQTT v5.0, look at section 3.2.2.2 Connect Reason code: <https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html>
-    /// For MQTT v3.1.1, look at section 3.2.2.3 Connect Return code: <http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/mqtt-v3.1.1.html>
+    /// Yields the connection return code; if the status was rejected,
+    /// then an Error::RejectedConnection() variant will be returned
+    /// so that you don't have to manually check the success.
     pub async fn connect(
         &mut self,
         host: &str,
         port: c_int,
         keep_alive_interval: std::time::Duration,
         bind_address: Option<&str>,
-    ) -> Result<c_int, Error> {
+    ) -> Result<ConnectionStatus, Error> {
         let handlers = self.mosq.get_callbacks();
         let (tx, rx) = bounded(1);
         handlers.connect.lock().unwrap().replace(tx);
@@ -228,7 +227,11 @@ impl Client {
             .recv()
             .await
             .map_err(|_| Error::Mosq(mosq_err_t::MOSQ_ERR_INVAL))?;
-        Ok(rc)
+        if !rc.is_successful() {
+            Err(Error::RejectedConnection(rc))
+        } else {
+            Ok(rc)
+        }
     }
 
     /// Publish a message to the specified topic.

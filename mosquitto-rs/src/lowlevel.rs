@@ -464,6 +464,41 @@ fn path_to_cstring<P: AsRef<Path>>(p: Option<P>) -> Result<Option<CString>, Erro
     }
 }
 
+/// Represents the status of the connection attempt.
+/// The embedded status code value depends on the protocol version
+/// that was setup for the client.
+/// For MQTT v5.0, look at section 3.2.2.2 Connect Reason code: <https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html>
+/// For MQTT v3.1.1, look at section 3.2.2.3 Connect Return code: <http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/mqtt-v3.1.1.html>
+/// Use the `is_successful` method to test whether the connection was
+/// successfully initiated.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct ConnectionStatus(pub c_int);
+
+impl std::fmt::Display for ConnectionStatus {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let desc = unsafe { sys::mosquitto_connack_string(self.0) };
+        if desc.is_null() {
+            write!(fmt, "CONNACK code {}", self.0)
+        } else {
+            let desc = unsafe { CStr::from_ptr(desc) };
+            write!(fmt, "CONNACK code {}: {}", self.0, desc.to_string_lossy())
+        }
+    }
+}
+
+impl std::fmt::Debug for ConnectionStatus {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        std::fmt::Display::fmt(self, fmt)
+    }
+}
+
+impl ConnectionStatus {
+    /// Returns true if the connection attempt was successful.
+    pub fn is_successful(&self) -> bool {
+        self.0 == sys::mqtt311_connack_codes::CONNACK_ACCEPTED as _
+    }
+}
+
 struct CallbackWrapper<T: Callbacks> {
     cb: RefCell<T>,
 }
@@ -488,7 +523,7 @@ impl<T: Callbacks> CallbackWrapper<T> {
     unsafe extern "C" fn connect(m: *mut sys::mosquitto, cb: *mut c_void, rc: c_int) {
         let cb = Self::resolve_self(cb);
         with_transient_client(m, |client| {
-            cb.cb.borrow().on_connect(client, rc);
+            cb.cb.borrow().on_connect(client, ConnectionStatus(rc));
         });
     }
 
@@ -587,11 +622,10 @@ pub type PasswdCallback =
 /// functions have completed.
 pub trait Callbacks {
     /// called when the connection has been acknowledged by the broker.
-    /// `reason` holds the connection return code; the value depends on the
-    /// version of the MQTT protocol in use:
-    /// For MQTT v5.0, look at section 3.2.2.2 Connect Reason code: <https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html>
-    /// For MQTT v3.1.1, look at section 3.2.2.3 Connect Return code: <http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/mqtt-v3.1.1.html>
-    fn on_connect(&self, _client: &mut Mosq, _reason: c_int) {}
+    /// `reason` holds the connection return code.
+    /// Use `reason.is_successful` to test whether the connection was
+    /// successful.
+    fn on_connect(&self, _client: &mut Mosq, _reason: ConnectionStatus) {}
 
     /// Called when the broker has received the DISCONNECT command
     fn on_disconnect(&self, _client: &mut Mosq, _reason: c_int) {}

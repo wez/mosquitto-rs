@@ -17,6 +17,8 @@ pub enum Error {
     UnknownMosq(c_int),
     #[error("hostname resolution error: {0}")]
     Resolution(String),
+    #[error("broker rejected connection")]
+    RejectedConnection(crate::ConnectionStatus),
 }
 
 lazy_static::lazy_static! {
