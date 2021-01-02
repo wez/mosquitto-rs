@@ -59,27 +59,30 @@ pub(crate) fn cstr(s: &str) -> Result<CString, Error> {
 
 /// `Mosq` is the low-level mosquitto client.
 /// You probably want to look at [Client](struct.Client.html) instead.
-pub struct Mosq {
+pub struct Mosq<CB = ()>
+where
+    CB: Callbacks,
+{
     m: *mut sys::mosquitto,
-    cb: Option<Arc<CallbackWrapper>>,
+    cb: Option<Arc<CallbackWrapper<CB>>>,
 }
 
 // libmosquitto is internally thread safe, so tell the rust compiler
 // that the Mosq wrapper type is Sync and Send.
-unsafe impl Sync for Mosq {}
-unsafe impl Send for Mosq {}
+unsafe impl<CB: Callbacks> Sync for Mosq<CB> {}
+unsafe impl<CB: Callbacks> Send for Mosq<CB> {}
 
-impl Mosq {
+impl<CB: Callbacks> Mosq<CB> {
     /// Create a new client instance with a random client id
-    pub fn with_auto_id() -> Result<Self, Error> {
+    pub fn with_auto_id(callbacks: CB) -> Result<Self, Error> {
         init_library();
         unsafe {
-            let cb = Arc::new(CallbackWrapper::new());
+            let cb = Arc::new(CallbackWrapper::new(callbacks));
             let m = sys::mosquitto_new(std::ptr::null(), true, Arc::as_ptr(&cb) as *mut _);
             if m.is_null() {
                 Err(Error::Create(std::io::Error::last_os_error()))
             } else {
-                Ok(Self { m, cb: Some(cb) })
+                Ok(Self::set_callbacks(Self { m, cb: Some(cb) }))
             }
         }
     }
@@ -87,10 +90,10 @@ impl Mosq {
     /// Create a new client instance with the specified id.
     /// If clean_session is true, instructs the broker to clean all messages
     /// and subscriptions on disconnect.  Otherwise it will preserve them.
-    pub fn with_id(id: &str, clean_session: bool) -> Result<Self, Error> {
+    pub fn with_id(callbacks: CB, id: &str, clean_session: bool) -> Result<Self, Error> {
         init_library();
         unsafe {
-            let cb = Arc::new(CallbackWrapper::new());
+            let cb = Arc::new(CallbackWrapper::new(callbacks));
             let m = sys::mosquitto_new(
                 cstr(id)?.as_ptr(),
                 clean_session,
@@ -99,7 +102,7 @@ impl Mosq {
             if m.is_null() {
                 Err(Error::Create(std::io::Error::last_os_error()))
             } else {
-                Ok(Self { m, cb: Some(cb) })
+                Ok(Self::set_callbacks(Self { m, cb: Some(cb) }))
             }
         }
     }
@@ -140,7 +143,7 @@ impl Mosq {
     /// port is typically 1883 for mqtt, but it may be different
     /// in your environment.
     ///
-    /// `keep_alive_seconds` specifies the interval at which
+    /// `keep_alive_interval` specifies the interval at which
     /// keepalive requests are sent.  mosquitto has a minimum value
     /// of 5 for this and will generate an error if you use a smaller
     /// value.
@@ -189,7 +192,7 @@ impl Mosq {
     /// port is typically 1883 for mqtt, but it may be different
     /// in your environment.
     ///
-    /// `keep_alive_seconds` specifies the interval at which
+    /// `keep_alive_interval` specifies the interval at which
     /// keepalive requests are sent.  mosquitto has a minimum value
     /// of 5 for this and will generate an error if you use a smaller
     /// value.
@@ -292,41 +295,25 @@ impl Mosq {
         Error::result(err, mid)
     }
 
-    /// Registers a set of callbacks with the client.
-    /// Ownership of the callbacks is transferred to the client.
-    /// You can obtain a reference to the callbacks via
-    /// [get_callbacks](#method.get_callbacks)
-    pub fn set_callbacks<C: Callbacks + 'static>(&self, cb: C) {
-        self.cb
-            .as_ref()
-            .expect("set_callbacks not to be called on a transient Mosq")
-            .cb
-            .borrow_mut()
-            .replace(Box::new(cb));
+    fn set_callbacks(self) -> Self {
         unsafe {
-            // Mosq now owns cb
-            //            sys::mosquitto_user_data_set(self.m, cb as *mut c_void);
-
-            sys::mosquitto_connect_callback_set(self.m, Some(CallbackWrapper::connect));
-            sys::mosquitto_disconnect_callback_set(self.m, Some(CallbackWrapper::disconnect));
-            sys::mosquitto_publish_callback_set(self.m, Some(CallbackWrapper::publish));
-            sys::mosquitto_subscribe_callback_set(self.m, Some(CallbackWrapper::subscribe));
-            sys::mosquitto_message_callback_set(self.m, Some(CallbackWrapper::message));
+            sys::mosquitto_connect_callback_set(self.m, Some(CallbackWrapper::<CB>::connect));
+            sys::mosquitto_disconnect_callback_set(self.m, Some(CallbackWrapper::<CB>::disconnect));
+            sys::mosquitto_publish_callback_set(self.m, Some(CallbackWrapper::<CB>::publish));
+            sys::mosquitto_subscribe_callback_set(self.m, Some(CallbackWrapper::<CB>::subscribe));
+            sys::mosquitto_message_callback_set(self.m, Some(CallbackWrapper::<CB>::message));
         }
+        self
     }
 
     /// Returns a reference to the callbacks previously registered
-    /// via `set_callbacks`.
-    pub fn get_callbacks<T: Callbacks>(&self) -> Option<CallbackGuard<T>> {
-        let guard = self
-            .cb
+    /// during construction.
+    pub fn get_callbacks(&self) -> Ref<CB> {
+        self.cb
             .as_ref()
             .expect("get_callbacks not to be called on a transient Mosq")
             .cb
-            .borrow();
-        let b = guard.as_ref()?;
-        let r = b.downcast_ref::<T>()? as *const T;
-        Some(CallbackGuard { _guard: guard, r })
+            .borrow()
     }
 
     /// Runs the message loop for the client.
@@ -368,8 +355,8 @@ impl Mosq {
     }
 }
 
-struct CallbackWrapper {
-    cb: RefCell<Option<Box<dyn Callbacks>>>,
+struct CallbackWrapper<T: Callbacks> {
+    cb: RefCell<T>,
 }
 
 pub struct CallbackGuard<'a, T> {
@@ -390,35 +377,35 @@ fn with_transient_client<F: FnOnce(&mut Mosq)>(m: *mut sys::mosquitto, func: F) 
     std::mem::forget(client);
 }
 
-impl CallbackWrapper {
-    fn new() -> Self {
+impl<T: Callbacks> CallbackWrapper<T> {
+    fn new(cb: T) -> Self {
         Self {
-            cb: RefCell::new(None),
+            cb: RefCell::new(cb),
         }
     }
 
     unsafe fn resolve_self<'a>(cb: *mut c_void) -> &'a Self {
-        &*(cb as *const CallbackWrapper)
+        &*(cb as *const Self)
     }
 
     unsafe extern "C" fn connect(m: *mut sys::mosquitto, cb: *mut c_void, rc: c_int) {
         let cb = Self::resolve_self(cb);
         with_transient_client(m, |client| {
-            cb.cb.borrow().as_ref().unwrap().on_connect(client, rc);
+            cb.cb.borrow().on_connect(client, rc);
         });
     }
 
     unsafe extern "C" fn disconnect(m: *mut sys::mosquitto, cb: *mut c_void, rc: c_int) {
         let cb = Self::resolve_self(cb);
         with_transient_client(m, |client| {
-            cb.cb.borrow().as_ref().unwrap().on_disconnect(client, rc);
+            cb.cb.borrow().on_disconnect(client, rc);
         });
     }
 
     unsafe extern "C" fn publish(m: *mut sys::mosquitto, cb: *mut c_void, mid: MessageId) {
         let cb = Self::resolve_self(cb);
         with_transient_client(m, |client| {
-            cb.cb.borrow().as_ref().unwrap().on_publish(client, mid);
+            cb.cb.borrow().on_publish(client, mid);
         });
     }
 
@@ -433,11 +420,7 @@ impl CallbackWrapper {
         with_transient_client(m, |client| {
             let granted_qos = std::slice::from_raw_parts(granted_qos, qos_count as usize);
             let granted_qos: Vec<QoS> = granted_qos.iter().map(QoS::from_int).collect();
-            cb.cb
-                .borrow()
-                .as_ref()
-                .unwrap()
-                .on_subscribe(client, mid, &granted_qos);
+            cb.cb.borrow().on_subscribe(client, mid, &granted_qos);
         });
     }
 
@@ -451,7 +434,7 @@ impl CallbackWrapper {
             let msg = &*msg;
             let topic = CStr::from_ptr(msg.topic);
             let topic = topic.to_string_lossy().to_string();
-            cb.cb.borrow().as_ref().unwrap().on_message(
+            cb.cb.borrow().on_message(
                 client,
                 msg.mid,
                 topic,
@@ -503,6 +486,8 @@ pub trait Callbacks: downcast_rs::Downcast {
 }
 downcast_rs::impl_downcast!(Callbacks);
 
+impl Callbacks for () {}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum QoS {
     /// This is the simplest, lowest-overhead method of sending a message. The client simply
@@ -539,7 +524,7 @@ impl QoS {
     }
 }
 
-impl Drop for Mosq {
+impl<CB: Callbacks> Drop for Mosq<CB> {
     fn drop(&mut self) {
         unsafe {
             sys::mosquitto_destroy(self.m);

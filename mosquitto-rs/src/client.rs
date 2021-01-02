@@ -100,7 +100,7 @@ impl Callbacks for Handler {
 
 /// A high-level, asynchronous mosquitto MQTT client
 pub struct Client {
-    mosq: Mosq,
+    mosq: Mosq<Handler>,
 }
 
 impl Client {
@@ -108,16 +108,14 @@ impl Client {
     /// If clean_session is true, instructs the broker to clean all messages
     /// and subscriptions on disconnect.  Otherwise it will preserve them.
     pub fn with_id(id: &str, clean_session: bool) -> Result<Self, Error> {
-        let mosq = Mosq::with_id(id, clean_session)?;
-        mosq.set_callbacks(Handler::new());
+        let mosq = Mosq::with_id(Handler::new(), id, clean_session)?;
         mosq.start_loop_thread()?;
         Ok(Self { mosq })
     }
 
     /// Create a new client instance with a random client id
     pub fn with_auto_id() -> Result<Self, Error> {
-        let mosq = Mosq::with_auto_id()?;
-        mosq.set_callbacks(Handler::new());
+        let mosq = Mosq::with_auto_id(Handler::new())?;
         mosq.start_loop_thread()?;
         Ok(Self { mosq })
     }
@@ -138,9 +136,9 @@ impl Client {
     /// port is typically 1883 for mqtt, but it may be different
     /// in your environment.
     ///
-    /// `keep_alive_seconds` specifies the interval at which
+    /// `keep_alive_interval` specifies the interval at which
     /// keepalive requests are sent.  mosquitto has a minimum value
-    /// of 5 for this and will generate an error if you use a smaller
+    /// of 5 seconds for this and will generate an error if you use a smaller
     /// value.
     ///
     /// `bind_address` can be used to specify the outgoing interface
@@ -160,10 +158,7 @@ impl Client {
         keep_alive_interval: std::time::Duration,
         bind_address: Option<&str>,
     ) -> Result<c_int, Error> {
-        let handlers = self
-            .mosq
-            .get_callbacks::<Handler>()
-            .expect("assigned during ctor");
+        let handlers = self.mosq.get_callbacks();
         let (tx, rx) = bounded(1);
         handlers.connect.lock().unwrap().replace(tx);
         self.mosq
@@ -197,10 +192,7 @@ impl Client {
         let (tx, rx) = bounded(1);
 
         {
-            let handlers = self
-                .mosq
-                .get_callbacks::<Handler>()
-                .expect("assigned during ctor");
+            let handlers = self.mosq.get_callbacks();
             // Lock the map before we send, so that we can guarantee to
             // win the race with populating the map vs. signalling completion
             let mut mids = handlers.mids.lock().unwrap();
@@ -222,10 +214,7 @@ impl Client {
     /// the channel and subsequently it no longer has the channel
     /// receiver to retur, so will yield None.
     pub fn subscriber(&mut self) -> Option<Receiver<Message>> {
-        let handlers = self
-            .mosq
-            .get_callbacks::<Handler>()
-            .expect("assigned during ctor");
+        let handlers = self.mosq.get_callbacks();
         let x = handlers.subscriber_rx.lock().unwrap().take();
         x
     }
@@ -237,10 +226,7 @@ impl Client {
         let (tx, rx) = bounded(1);
 
         {
-            let handlers = self
-                .mosq
-                .get_callbacks::<Handler>()
-                .expect("assigned during ctor");
+            let handlers = self.mosq.get_callbacks();
             // Lock the map before we send, so that we can guarantee to
             // win the race with populating the map vs. signalling completion
             let mut mids = handlers.mids.lock().unwrap();
