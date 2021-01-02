@@ -2,16 +2,19 @@ use mosquitto_rs::*;
 
 fn main() -> Result<(), Error> {
     smol::block_on(async {
-        let mut mosq = Client::with_auto_id()?;
-        let rc = mosq.connect("localhost", 1883, 5, None).await?;
+        let mut client = Client::with_auto_id()?;
+        let rc = client
+            .connect("localhost", 1883, std::time::Duration::from_secs(5), None)
+            .await?;
         println!("connect: {}", rc);
 
-        let subscriptions = mosq.subscriber().unwrap();
+        let subscriptions = client.subscriber().unwrap();
 
-        mosq.subscribe("test", QoS::AtMostOnce).await?;
+        client.subscribe("test", QoS::AtMostOnce).await?;
         println!("subscribed");
 
-        mosq.publish("test", b"woot", QoS::AtMostOnce, false)
+        client
+            .publish("test", b"woot", QoS::AtMostOnce, false)
             .await?;
         println!("published");
 

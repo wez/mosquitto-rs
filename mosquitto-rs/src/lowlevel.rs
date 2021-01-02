@@ -142,7 +142,7 @@ impl Mosq {
         &self,
         host: &str,
         port: c_int,
-        keep_alive_seconds: c_int,
+        keep_alive_interval: std::time::Duration,
         bind_address: Option<&str>,
     ) -> Result<(), Error> {
         let host = cstr(host)?;
@@ -159,7 +159,10 @@ impl Mosq {
                 self.m,
                 host.as_ptr(),
                 port,
-                keep_alive_seconds,
+                keep_alive_interval
+                    .as_secs()
+                    .try_into()
+                    .map_err(|_| Error::Mosq(sys::mosq_err_t::MOSQ_ERR_INVAL))?,
                 bind_address,
             )
         };
@@ -188,7 +191,7 @@ impl Mosq {
         &self,
         host: &str,
         port: c_int,
-        keep_alive_seconds: c_int,
+        keep_alive_interval: std::time::Duration,
         bind_address: Option<&str>,
     ) -> Result<(), Error> {
         let host = cstr(host)?;
@@ -205,7 +208,10 @@ impl Mosq {
                 self.m,
                 host.as_ptr(),
                 port,
-                keep_alive_seconds,
+                keep_alive_interval
+                    .as_secs()
+                    .try_into()
+                    .map_err(|_| Error::Mosq(sys::mosq_err_t::MOSQ_ERR_INVAL))?,
                 bind_address,
             )
         };
@@ -447,6 +453,10 @@ pub type MessageId = c_int;
 /// functions have completed.
 pub trait Callbacks: downcast_rs::Downcast {
     /// called when the connection has been acknowledged by the broker.
+    /// `reason` holds the connection return code; the value depends on the
+    /// version of the MQTT protocol in use:
+    /// For MQTT v5.0, look at section 3.2.2.2 Connect Reason code: <https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html>
+    /// For MQTT v3.1.1, look at section 3.2.2.3 Connect Return code: <http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/mqtt-v3.1.1.html>
     fn on_connect(&self, _client: &mut Mosq, _reason: c_int) {}
 
     /// Called when the broker has received the DISCONNECT command

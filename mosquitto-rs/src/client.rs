@@ -148,11 +148,16 @@ impl Client {
     ///
     /// connect completes when the broker acknowledges the CONNECT
     /// command.
+    ///
+    /// Yields the connection return code; the value depends on the
+    /// version of the MQTT protocol in use:
+    /// For MQTT v5.0, look at section 3.2.2.2 Connect Reason code: <https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html>
+    /// For MQTT v3.1.1, look at section 3.2.2.3 Connect Return code: <http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/mqtt-v3.1.1.html>
     pub async fn connect(
         &mut self,
         host: &str,
         port: c_int,
-        keep_alive_seconds: c_int,
+        keep_alive_interval: std::time::Duration,
         bind_address: Option<&str>,
     ) -> Result<c_int, Error> {
         let handlers = self
@@ -162,7 +167,7 @@ impl Client {
         let (tx, rx) = bounded(1);
         handlers.connect.lock().unwrap().replace(tx);
         self.mosq
-            .connect(host, port, keep_alive_seconds, bind_address)?;
+            .connect(host, port, keep_alive_interval, bind_address)?;
         let rc = rx
             .recv()
             .await
