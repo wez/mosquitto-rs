@@ -3,7 +3,8 @@ pub(crate) use libmosquitto_sys as sys;
 use std::cell::{Ref, RefCell};
 use std::convert::TryInto;
 use std::ffi::{CStr, CString};
-use std::os::raw::{c_int, c_void};
+use std::os::raw::{c_char, c_int, c_void};
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::Once;
 
@@ -353,6 +354,113 @@ impl<CB: Callbacks> Mosq<CB> {
     pub fn stop_loop_thread(&self, force_cancel: bool) -> Result<(), Error> {
         unsafe { Error::result(sys::mosquitto_loop_stop(self.m, force_cancel), ()) }
     }
+
+    /// Sets an option with a string value
+    pub fn set_string_option(&self, option: sys::mosq_opt_t, value: &str) -> Result<(), Error> {
+        let err = unsafe { sys::mosquitto_string_option(self.m, option, cstr(value)?.as_ptr()) };
+        Error::result(err, ())
+    }
+
+    /// Sets an option with an integer value
+    pub fn set_int_option(&self, option: sys::mosq_opt_t, value: c_int) -> Result<(), Error> {
+        let err = unsafe { sys::mosquitto_int_option(self.m, option, value) };
+        Error::result(err, ())
+    }
+
+    /// Sets a void* pointer option such as MOSQ_OPT_SSL_CTX.
+    /// Unsafe because we can't know whether what is being passed really matches up.
+    pub unsafe fn set_ptr_option(
+        &self,
+        option: sys::mosq_opt_t,
+        value: *mut c_void,
+    ) -> Result<(), Error> {
+        let err = sys::mosquitto_void_option(self.m, option, value);
+        Error::result(err, ())
+    }
+
+    /// Configures the TLS parameters for the client.
+    ///
+    /// `ca_file` is the path to a PEM encoded trust CA certificate file.
+    /// Either `ca_file` or `ca_path` must be set.
+    ///
+    /// `ca_path` is the path to a directory containing PEM encoded trust
+    /// CA certificates.  Either `ca_file` or `ca_path` must be set.
+    ///
+    /// `cert_file` path to a file containing the PEM encoded certificate
+    /// file for this client.  If `None` then `key_file` must also be `None`
+    /// and no client certificate will be used.
+    ///
+    /// `key_file` path to a file containing the PEM encoded private key
+    /// for this client.  If `None` them `cert_file` must also be `None`
+    /// and no client certificate will be used.
+    ///
+    /// This client implementation currently targets mosquitto 1.4 which
+    /// doesn't have a way for us to safely associate a pw_callback with the underlying
+    /// code.  Therefore, the keyfile must not be encrypted.
+    pub fn configure_tls<CAFILE, CAPATH, CERTFILE, KEYFILE>(
+        &self,
+        ca_file: Option<CAFILE>,
+        ca_path: Option<CAPATH>,
+        cert_file: Option<CERTFILE>,
+        key_file: Option<KEYFILE>,
+    ) -> Result<(), Error>
+    where
+        CAFILE: AsRef<Path>,
+        CAPATH: AsRef<Path>,
+        CERTFILE: AsRef<Path>,
+        KEYFILE: AsRef<Path>,
+    {
+        let ca_file = path_to_cstring(ca_file)?;
+        let ca_path = path_to_cstring(ca_path)?;
+        let cert_file = path_to_cstring(cert_file)?;
+        let key_file = path_to_cstring(key_file)?;
+
+        let err = unsafe {
+            sys::mosquitto_tls_set(
+                self.m,
+                opt_cstring_to_ptr(&ca_file),
+                opt_cstring_to_ptr(&ca_path),
+                opt_cstring_to_ptr(&cert_file),
+                opt_cstring_to_ptr(&key_file),
+                None,
+            )
+        };
+
+        Error::result(err, ())
+    }
+}
+
+fn opt_cstring_to_ptr(c: &Option<CString>) -> *const c_char {
+    match c {
+        Some(c) => c.as_ptr(),
+        None => std::ptr::null(),
+    }
+}
+
+fn path_to_cstring<P: AsRef<Path>>(p: Option<P>) -> Result<Option<CString>, Error> {
+    match p {
+        Some(p) => {
+            let p = p.as_ref();
+
+            #[cfg(unix)]
+            {
+                use std::os::unix::ffi::OsStrExt;
+                let c = CString::new(p.as_os_str().as_bytes()).map_err(Error::CString)?;
+                Ok(Some(c))
+            }
+
+            #[cfg(windows)]
+            {
+                // This isn't 100% correct, but it's probably good enough :-/
+                let s = p
+                    .to_str()
+                    .ok_or(Error::Mosq(sys::mosq_err_t::MOSQ_ERR_MALFORMED_UTF8))?;
+                let c = cstr(s)?;
+                Ok(Some(c))
+            }
+        }
+        None => Ok(None),
+    }
 }
 
 struct CallbackWrapper<T: Callbacks> {
@@ -516,5 +624,27 @@ impl<CB: Callbacks> Drop for Mosq<CB> {
         unsafe {
             sys::mosquitto_destroy(self.m);
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn setting_auth() {
+        let mosq = Mosq::with_auto_id(()).unwrap();
+        mosq.set_username_and_password(None, None).unwrap();
+        mosq.set_username_and_password(Some("user"), None).unwrap();
+        assert!(mosq.set_username_and_password(None, Some("pass")).is_err());
+        mosq.set_username_and_password(Some("user"), Some("pass"))
+            .unwrap();
+    }
+
+    #[test]
+    fn setting_some_options() {
+        let mosq = Mosq::with_auto_id(()).unwrap();
+        mosq.set_int_option(sys::mosq_opt_t::MOSQ_OPT_RECEIVE_MAXIMUM, 20)
+            .unwrap();
     }
 }

@@ -1,9 +1,10 @@
-use crate::lowlevel::sys::mosq_err_t;
+use crate::lowlevel::sys::{mosq_err_t, mosq_opt_t};
 use crate::lowlevel::{Callbacks, MessageId, Mosq, QoS};
 use crate::Error;
 use async_channel::{bounded, unbounded, Receiver, Sender};
 use std::collections::HashMap;
 use std::os::raw::c_int;
+use std::path::Path;
 use std::sync::Mutex;
 
 struct Handler {
@@ -23,6 +24,66 @@ impl Handler {
             subscriber_rx: Mutex::new(Some(rx)),
         }
     }
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[repr(i32)]
+pub enum ProtocolVersion {
+    V31 = 3,
+    V311 = 4,
+    V5 = 5,
+}
+
+impl Default for ProtocolVersion {
+    fn default() -> Self {
+        Self::V31
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum ClientOption<'a> {
+    /// Specifies the version of the MQTT protocol to be used.
+    /// Defaults to ProtocolVersion::V31
+    ProtocolVersion(ProtocolVersion),
+
+    /// Value can be set between 1 and 65535 inclusive, and represents the maximum number of
+    /// incoming QoS 1 and QoS 2 messages that this client wants to process at once. Defaults to
+    /// 20. This option is not valid for MQTT v3.1 or v3.1.1 clients.  Note that if the
+    /// MQTT_PROP_RECEIVE_MAXIMUM property is in the proplist passed to mosquitto_connect_v5(),
+    /// then that property will override this option. Using this option is the recommended method
+    /// however.
+    ReceiveMaximum(u16),
+
+    /// Value can be set between 1 and 65535 inclusive, and represents the maximum number of
+    /// outgoing QoS 1 and QoS 2 messages that this client will attempt to have "in flight" at
+    /// once. Defaults to 20.  This option is not valid for MQTT v3.1 or v3.1.1 clients.  Note that
+    /// if the broker being connected to sends a MQTT_PROP_RECEIVE_MAXIMUM property that has a
+    /// lower value than this option, then the broker provided value will be used.
+    SendMaximum(u16),
+
+    /// Set whether OCSP checking on TLS connections is required.
+    /// The default is false for no checking
+    OcspRequired(bool),
+
+    /// Configure the client for TLS Engine support; set this to a TLS Engine ID
+    /// to be used when creating TLS connections.
+    TlsEngine(&'a str),
+
+    /// Configure the client to treat the keyfile differently depending on its type.  Must be set
+    /// before <mosquitto_connect>.  Set as either "pem" or "engine", to determine from where the
+    /// private key for a TLS connection will be obtained. Defaults to "pem", a normal private key
+    /// file.
+    TlsKeyForm(&'a str),
+
+    /// Where the TLS Engine requires the use of a password to be accessed, this option allows a
+    /// hex encoded SHA1 hash of the private key password to be passed to the engine directly.
+    /// Must be set before <mosquitto_connect>.
+    TlsKPassSha1(&'a str),
+
+    /// If the broker being connected to has multiple services available on a single TLS port, such
+    /// as both MQTT and WebSockets, use this option to configure the ALPN option for the
+    /// connection.
+    TlsALPN(&'a str),
 }
 
 /// Represents a received message that matches one or
@@ -240,5 +301,74 @@ impl Client {
             .map_err(|_| Error::Mosq(mosq_err_t::MOSQ_ERR_INVAL))?;
 
         Ok(())
+    }
+
+    /// Set an option for the client.
+    /// Most options need to be set prior to calling `connect` in order
+    /// to have any effect.
+    pub fn set_option(&self, option: &ClientOption) -> Result<(), Error> {
+        match option {
+            ClientOption::ProtocolVersion(v) => self
+                .mosq
+                .set_int_option(mosq_opt_t::MOSQ_OPT_PROTOCOL_VERSION, *v as c_int),
+            ClientOption::ReceiveMaximum(v) => self
+                .mosq
+                .set_int_option(mosq_opt_t::MOSQ_OPT_RECEIVE_MAXIMUM, *v as c_int),
+            ClientOption::SendMaximum(v) => self
+                .mosq
+                .set_int_option(mosq_opt_t::MOSQ_OPT_SEND_MAXIMUM, *v as c_int),
+            ClientOption::OcspRequired(v) => self.mosq.set_int_option(
+                mosq_opt_t::MOSQ_OPT_TLS_OCSP_REQUIRED,
+                if *v { 1 } else { 0 },
+            ),
+            ClientOption::TlsEngine(e) => self
+                .mosq
+                .set_string_option(mosq_opt_t::MOSQ_OPT_TLS_ENGINE, e),
+            ClientOption::TlsKeyForm(e) => self
+                .mosq
+                .set_string_option(mosq_opt_t::MOSQ_OPT_TLS_KEYFORM, e),
+            ClientOption::TlsKPassSha1(e) => self
+                .mosq
+                .set_string_option(mosq_opt_t::MOSQ_OPT_TLS_ENGINE_KPASS_SHA1, e),
+            ClientOption::TlsALPN(e) => self
+                .mosq
+                .set_string_option(mosq_opt_t::MOSQ_OPT_TLS_ALPN, e),
+        }
+    }
+
+    /// Configures the TLS parameters for the client.
+    ///
+    /// `ca_file` is the path to a PEM encoded trust CA certificate file.
+    /// Either `ca_file` or `ca_path` must be set.
+    ///
+    /// `ca_path` is the path to a directory containing PEM encoded trust
+    /// CA certificates.  Either `ca_file` or `ca_path` must be set.
+    ///
+    /// `cert_file` path to a file containing the PEM encoded certificate
+    /// file for this client.  If `None` then `key_file` must also be `None`
+    /// and no client certificate will be used.
+    ///
+    /// `key_file` path to a file containing the PEM encoded private key
+    /// for this client.  If `None` them `cert_file` must also be `None`
+    /// and no client certificate will be used.
+    ///
+    /// This client implementation currently targets mosquitto 1.4 which
+    /// doesn't have a way for us to safely associate a pw_callback with the underlying
+    /// code.  Therefore, the keyfile must not be encrypted.
+    pub fn configure_tls<CAFILE, CAPATH, CERTFILE, KEYFILE>(
+        &self,
+        ca_file: Option<CAFILE>,
+        ca_path: Option<CAPATH>,
+        cert_file: Option<CERTFILE>,
+        key_file: Option<KEYFILE>,
+    ) -> Result<(), Error>
+    where
+        CAFILE: AsRef<Path>,
+        CAPATH: AsRef<Path>,
+        CERTFILE: AsRef<Path>,
+        KEYFILE: AsRef<Path>,
+    {
+        self.mosq
+            .configure_tls(ca_file, ca_path, cert_file, key_file)
     }
 }
