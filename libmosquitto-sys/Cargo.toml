@@ -8,6 +8,8 @@ build = "build.rs"
 readme = "README.md"
 license = "MIT"
 description = "Unsafe FFI bindings to libmosquitto"
+documentation = "https://docs.rs/libmosquitto-sys"
+repository = "https://github.com/wez/mosquitto-rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
