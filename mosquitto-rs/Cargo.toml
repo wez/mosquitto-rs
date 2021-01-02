@@ -1,11 +1,11 @@
 [package]
 name = "mosquitto-rs"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Wez Furlong"]
 edition = "2018"
 readme = "README.md"
 license = "MIT"
-description = "Unsafe FFI bindings to libmosquitto"
+description = "An async MQTT client based on libmosquitto"
 documentation = "https://docs.rs/mosquitto-rs"
 repository = "https://github.com/wez/mosquitto-rs"
 
@@ -13,7 +13,6 @@ repository = "https://github.com/wez/mosquitto-rs"
 
 [dependencies]
 async-channel = "1.5"
-downcast-rs = "1.2"
 lazy_static = "1.4"
 libc = "0.2"
 libmosquitto-sys = {version="0.1", path="../libmosquitto-sys" }

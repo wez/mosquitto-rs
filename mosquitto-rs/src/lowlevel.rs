@@ -453,7 +453,7 @@ pub type MessageId = c_int;
 
 /// Defines handlers that can be used to determine when various
 /// functions have completed.
-pub trait Callbacks: downcast_rs::Downcast {
+pub trait Callbacks {
     /// called when the connection has been acknowledged by the broker.
     /// `reason` holds the connection return code; the value depends on the
     /// version of the MQTT protocol in use:
@@ -484,7 +484,6 @@ pub trait Callbacks: downcast_rs::Downcast {
     ) {
     }
 }
-downcast_rs::impl_downcast!(Callbacks);
 
 impl Callbacks for () {}
 
