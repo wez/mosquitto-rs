@@ -16,11 +16,15 @@ fn main() -> Result<(), Error> {
     }
 
     impl Callbacks for Handlers {
-        fn on_connect(&self, mosq: &mut Mosq, reason: i32) {
-            println!("Connected: reason={}", reason);
-            let sub_mid = mosq.subscribe("test/topic", QoS::AtMostOnce);
-            println!("Queued subscribe mid {:?}", sub_mid);
-            self.bump_and_print();
+        fn on_connect(&self, mosq: &mut Mosq, status: ConnectionStatus) {
+            println!("Connected: status={}", status);
+            if !status.is_successful() {
+                let _ = mosq.disconnect();
+            } else {
+                let sub_mid = mosq.subscribe("test/topic", QoS::AtMostOnce);
+                println!("Queued subscribe mid {:?}", sub_mid);
+                self.bump_and_print();
+            }
         }
 
         fn on_publish(&self, _: &mut Mosq, mid: MessageId) {
