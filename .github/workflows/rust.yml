@@ -21,8 +21,10 @@ jobs:
         sudo -n apt-get update
         sudo -n apt-get install -y mosquitto-dev
     - name: Build
-      run: cargo build --verbose
+      run: cargo build --all --verbose
+    - name: Examples
+      run: cargo build --all --verbose --examples
     - name: Run tests
-      run: cargo test --verbose
+      run: cargo test --all --verbose
     - name: Check formatting
       run: cargo fmt --all -- --check
