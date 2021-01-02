@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::os::raw::c_int;
 use std::path::Path;
 use std::sync::Mutex;
+use std::time::Duration;
 
 struct Handler {
     connect: Mutex<Option<Sender<ConnectionStatus>>>,
@@ -215,7 +216,7 @@ impl Client {
         &mut self,
         host: &str,
         port: c_int,
-        keep_alive_interval: std::time::Duration,
+        keep_alive_interval: Duration,
         bind_address: Option<&str>,
     ) -> Result<ConnectionStatus, Error> {
         let handlers = self.mosq.get_callbacks();
@@ -374,5 +375,34 @@ impl Client {
     {
         self.mosq
             .configure_tls(ca_file, ca_path, cert_file, key_file, pw_callback)
+    }
+
+    /// Controls reconnection behavior when running in the message loop.
+    /// By default, if a client is unexpectedly disconnected, mosquitto will
+    /// try to reconnect.  The default reconnect parameters are to retry once
+    /// per second to reconnect.
+    ///
+    /// You change adjust the delay between connection attempts by changing
+    /// the parameters with this function.
+    ///
+    /// `reconnect_delay` is the base delay amount.
+    ///
+    /// If `use_exponential_backoff` is true, then the delay is doubled on
+    /// each successive attempt, until the `max_reconnect_delay` is reached.
+    ///
+    /// If `use_exponential_backoff` is false, then the `reconnect_delay` is
+    /// added on each successive attempt, until the `max_reconnect_delay` is
+    /// reached.
+    pub fn set_reconnect_delay(
+        &self,
+        reconnect_delay: Duration,
+        max_reconnect_delay: Duration,
+        use_exponential_backoff: bool,
+    ) -> Result<(), Error> {
+        self.mosq.set_reconnect_delay(
+            reconnect_delay,
+            max_reconnect_delay,
+            use_exponential_backoff,
+        )
     }
 }

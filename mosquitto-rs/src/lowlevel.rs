@@ -7,6 +7,7 @@ use std::os::raw::{c_char, c_int, c_void};
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::Once;
+use std::time::Duration;
 
 static INIT: Once = Once::new();
 
@@ -155,7 +156,7 @@ impl<CB: Callbacks> Mosq<CB> {
         &self,
         host: &str,
         port: c_int,
-        keep_alive_interval: std::time::Duration,
+        keep_alive_interval: Duration,
         bind_address: Option<&str>,
     ) -> Result<(), Error> {
         let host = cstr(host)?;
@@ -204,7 +205,7 @@ impl<CB: Callbacks> Mosq<CB> {
         &self,
         host: &str,
         port: c_int,
-        keep_alive_interval: std::time::Duration,
+        keep_alive_interval: Duration,
         bind_address: Option<&str>,
     ) -> Result<(), Error> {
         let host = cstr(host)?;
@@ -323,10 +324,7 @@ impl<CB: Callbacks> Mosq<CB> {
     ///
     /// `timeout` specifies the internal sleep duration between
     /// iterations.
-    pub fn loop_until_explicitly_disconnected(
-        &self,
-        timeout: std::time::Duration,
-    ) -> Result<(), Error> {
+    pub fn loop_until_explicitly_disconnected(&self, timeout: Duration) -> Result<(), Error> {
         unsafe {
             let max_packets = 1;
             Error::result(
@@ -427,6 +425,45 @@ impl<CB: Callbacks> Mosq<CB> {
             )
         };
 
+        Error::result(err, ())
+    }
+
+    /// Controls reconnection behavior when running in the message loop.
+    /// By default, if a client is unexpectedly disconnected, mosquitto will
+    /// try to reconnect.  The default reconnect parameters are to retry once
+    /// per second to reconnect.
+    ///
+    /// You change adjust the delay between connection attempts by changing
+    /// the parameters with this function.
+    ///
+    /// `reconnect_delay` is the base delay amount.
+    ///
+    /// If `use_exponential_backoff` is true, then the delay is doubled on
+    /// each successive attempt, until the `max_reconnect_delay` is reached.
+    ///
+    /// If `use_exponential_backoff` is false, then the `reconnect_delay` is
+    /// added on each successive attempt, until the `max_reconnect_delay` is
+    /// reached.
+    pub fn set_reconnect_delay(
+        &self,
+        reconnect_delay: Duration,
+        max_reconnect_delay: Duration,
+        use_exponential_backoff: bool,
+    ) -> Result<(), Error> {
+        let err = unsafe {
+            sys::mosquitto_reconnect_delay_set(
+                self.m,
+                reconnect_delay
+                    .as_secs()
+                    .try_into()
+                    .map_err(|_| Error::Mosq(sys::mosq_err_t::MOSQ_ERR_INVAL))?,
+                max_reconnect_delay
+                    .as_secs()
+                    .try_into()
+                    .map_err(|_| Error::Mosq(sys::mosq_err_t::MOSQ_ERR_INVAL))?,
+                use_exponential_backoff,
+            )
+        };
         Error::result(err, ())
     }
 }
