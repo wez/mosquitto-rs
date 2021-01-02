@@ -252,8 +252,8 @@ impl<CB: Callbacks> Mosq<CB> {
     ///
     /// Returns the assigned MessageId value for the publish.
     /// The publish may not complete immediately.
-    /// You can use [set_callbacks](#method.set_callbacks) to register
-    /// an `on_publish` event to determine when it completes.
+    /// Your `Callbacks::on_publish` handler will be called
+    /// when it completes.
     pub fn publish(
         &self,
         topic: &str,
@@ -281,8 +281,8 @@ impl<CB: Callbacks> Mosq<CB> {
 
     /// Establish a subscription for topics that match `pattern`.
     ///
-    /// You must use [set_callbacks](#method.set_callbacks) to register
-    /// an `on_message` handler to process the received messages.
+    /// Your `Callbacks::on_message` handler will be called as messages
+    /// matching your subscription arrive.
     ///
     /// Returns the MessageId of the subscription request; the subscriptions
     /// won't be active until the broker has processed the request.
@@ -357,18 +357,6 @@ impl<CB: Callbacks> Mosq<CB> {
 
 struct CallbackWrapper<T: Callbacks> {
     cb: RefCell<T>,
-}
-
-pub struct CallbackGuard<'a, T> {
-    _guard: Ref<'a, Option<Box<dyn Callbacks>>>,
-    r: *const T,
-}
-
-impl<'a, T> std::ops::Deref for CallbackGuard<'a, T> {
-    type Target = T;
-    fn deref(&self) -> &T {
-        unsafe { &*self.r }
-    }
 }
 
 fn with_transient_client<F: FnOnce(&mut Mosq)>(m: *mut sys::mosquitto, func: F) {
