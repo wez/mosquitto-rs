@@ -19,7 +19,7 @@ jobs:
     - name: Install deps
       run: |
         sudo -n apt-get update
-        sudo -n apt-get install -y mosquitto-dev
+        sudo -n apt-get install -y libmosquitto-dev
     - name: Build
       run: cargo build --all --verbose
     - name: Examples
