@@ -394,15 +394,16 @@ impl<CB: Callbacks> Mosq<CB> {
     /// for this client.  If `None` them `cert_file` must also be `None`
     /// and no client certificate will be used.
     ///
-    /// This client implementation currently targets mosquitto 1.4 which
-    /// doesn't have a way for us to safely associate a pw_callback with the underlying
-    /// code.  Therefore, the keyfile must not be encrypted.
+    /// `pw_callback` allows you to provide a password to decrypt an
+    /// encrypted key file.  Specify `None` if the key file isn't
+    /// password protected.
     pub fn configure_tls<CAFILE, CAPATH, CERTFILE, KEYFILE>(
         &self,
         ca_file: Option<CAFILE>,
         ca_path: Option<CAPATH>,
         cert_file: Option<CERTFILE>,
         key_file: Option<KEYFILE>,
+        pw_callback: Option<PasswdCallback>,
     ) -> Result<(), Error>
     where
         CAFILE: AsRef<Path>,
@@ -422,7 +423,7 @@ impl<CB: Callbacks> Mosq<CB> {
                 opt_cstring_to_ptr(&ca_path),
                 opt_cstring_to_ptr(&cert_file),
                 opt_cstring_to_ptr(&key_file),
-                None,
+                pw_callback,
             )
         };
 
@@ -546,6 +547,41 @@ impl<T: Callbacks> CallbackWrapper<T> {
 /// This is used in this client to determine when a message
 /// has been sent.
 pub type MessageId = c_int;
+
+/// An OpenSSL password callback (see `man SSL_CTX_set_default_passwd_cb_userdata`).
+///
+/// `buf` is the destination for the password string.
+/// The size of `buf` is specified by `size`.
+///
+/// The goal of the callback is to obtain the password from the
+/// user (or some credential store) and store it into `buf`.
+///
+/// The password must be NUL terminated.
+/// The length of the password must be returned.
+///
+/// The other parameters to this function must be ignored as they
+/// cannot be used safely in the Rust client binding.
+///
+/// ```no_run
+/// use std::os::raw::{c_char, c_int, c_void};
+/// use std::convert::TryInto;
+///
+/// unsafe extern "C" fn my_callback(
+///     buf: *mut c_char,
+///     size: c_int,
+///     _: c_int,
+///     _: *mut c_void
+/// ) -> c_int {
+///   let buf = std::slice::from_raw_parts_mut(buf as *mut u8, size as usize);
+///
+///   let pw = b"secret";
+///   buf[..pw.len()].copy_from_slice(pw);
+///   buf[pw.len()] = 0;
+///   pw.len().try_into().unwrap()
+/// }
+/// ```
+pub type PasswdCallback =
+    unsafe extern "C" fn(buf: *mut c_char, size: c_int, _: c_int, _: *mut c_void) -> c_int;
 
 /// Defines handlers that can be used to determine when various
 /// functions have completed.

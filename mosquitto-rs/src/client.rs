@@ -1,6 +1,6 @@
 use crate::lowlevel::sys::{mosq_err_t, mosq_opt_t};
 use crate::lowlevel::{Callbacks, MessageId, Mosq, QoS};
-use crate::Error;
+use crate::{Error, PasswdCallback};
 use async_channel::{bounded, unbounded, Receiver, Sender};
 use std::collections::HashMap;
 use std::os::raw::c_int;
@@ -352,15 +352,16 @@ impl Client {
     /// for this client.  If `None` them `cert_file` must also be `None`
     /// and no client certificate will be used.
     ///
-    /// This client implementation currently targets mosquitto 1.4 which
-    /// doesn't have a way for us to safely associate a pw_callback with the underlying
-    /// code.  Therefore, the keyfile must not be encrypted.
+    /// `pw_callback` allows you to provide a password to decrypt an
+    /// encrypted key file.  Specify `None` if the key file isn't
+    /// password protected.
     pub fn configure_tls<CAFILE, CAPATH, CERTFILE, KEYFILE>(
         &self,
         ca_file: Option<CAFILE>,
         ca_path: Option<CAPATH>,
         cert_file: Option<CERTFILE>,
         key_file: Option<KEYFILE>,
+        pw_callback: Option<PasswdCallback>,
     ) -> Result<(), Error>
     where
         CAFILE: AsRef<Path>,
@@ -369,6 +370,6 @@ impl Client {
         KEYFILE: AsRef<Path>,
     {
         self.mosq
-            .configure_tls(ca_file, ca_path, cert_file, key_file)
+            .configure_tls(ca_file, ca_path, cert_file, key_file, pw_callback)
     }
 }
