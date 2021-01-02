@@ -1,3 +1,7 @@
+//! This example shows how to make a client, subscribe to a wildcard topic (`test/#`)
+//! and publish a message to a topic.
+//! It then waits to receive a message from the subscription (which will likely
+//! be the message it just sent) and then terminates.
 use mosquitto_rs::*;
 
 fn main() -> Result<(), Error> {
@@ -10,11 +14,11 @@ fn main() -> Result<(), Error> {
 
         let subscriptions = client.subscriber().unwrap();
 
-        client.subscribe("test", QoS::AtMostOnce).await?;
+        client.subscribe("test/#", QoS::AtMostOnce).await?;
         println!("subscribed");
 
         client
-            .publish("test", b"woot", QoS::AtMostOnce, false)
+            .publish("test/this", b"woot", QoS::AtMostOnce, false)
             .await?;
         println!("published");
 
