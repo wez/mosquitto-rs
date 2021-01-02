@@ -11,15 +11,11 @@ env:
 
 jobs:
   build:
-
+    strategy:
+      fail-fast: false
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v2
-    - name: Install deps
-      run: |
-        sudo -n apt-get update
-        sudo -n apt-get install -y libmosquitto-dev
     - name: Build
       run: cargo build --all --verbose
     - name: Examples
@@ -28,3 +24,31 @@ jobs:
       run: cargo test --all --verbose
     - name: Check formatting
       run: cargo fmt --all -- --check
+  system-libs:
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install deps
+      run: |
+        sudo -n apt-get update
+        sudo -n apt-get install -y libmosquitto-dev
+    - name: Build
+      run: cargo build -p mosquitto-rs --no-default-features --verbose
+    - name: Examples
+      run: cargo build -p mosquitto-rs --no-default-features --verbose --examples
+    - name: Run tests
+      run: cargo test -p mosquitto-rs --no-default-features --verbose
+  not-linux:
+    strategy:
+      fail-fast: false
+    runs-on: ["macos-latest", "vs2017-win2016"]
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build
+      run: cargo build -p mosquitto-rs --all-features --verbose
+    - name: Examples
+      run: cargo build -p mosquitto-rs --all-features --verbose --examples
+    - name: Run tests
+      run: cargo test -p mosquitto-rs --all-features --verbose
