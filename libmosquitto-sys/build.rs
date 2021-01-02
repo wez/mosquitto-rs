@@ -2,6 +2,11 @@ use std::env;
 use std::path::PathBuf;
 
 fn main() {
+    if std::env::var_os("DOCS_RS").is_some() {
+        eprintln!("WARNING: DOCS_RS is set in the environment, NOT linking to libmosquitto");
+        return;
+    }
+
     if pkg_config::Config::new()
         .atleast_version("1.4")
         .probe("libmosquitto")
