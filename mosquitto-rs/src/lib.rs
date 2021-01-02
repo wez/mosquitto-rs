@@ -1,6 +1,6 @@
 //! This crate implements an async MQTT client using libmosquitto.
 //!
-//! ```
+//! ```no_run
 //! use mosquitto_rs::*;
 //!
 //! fn main() -> Result<(), Error> {
