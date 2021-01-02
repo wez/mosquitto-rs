@@ -68,7 +68,10 @@ fn main() -> Result<(), Error> {
     mosq.connect_non_blocking("localhost", 1883, std::time::Duration::from_secs(5), None)?;
     mosq.loop_until_explicitly_disconnected(std::time::Duration::from_secs(10))?;
 
-    println!("handler data is: {:?}", mosq.get_callbacks::<Handlers>());
+    println!(
+        "handler data is: {:?}",
+        *mosq.get_callbacks::<Handlers>().unwrap()
+    );
 
     Ok(())
 }

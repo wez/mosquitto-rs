@@ -226,7 +226,8 @@ impl Client {
             .mosq
             .get_callbacks::<Handler>()
             .expect("assigned during ctor");
-        handlers.subscriber_rx.lock().unwrap().take()
+        let x = handlers.subscriber_rx.lock().unwrap().take();
+        x
     }
 
     /// Establish a subscription to topics matching pattern.
