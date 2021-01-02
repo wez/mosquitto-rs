@@ -11,11 +11,16 @@ repository = "https://github.com/wez/mosquitto-rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+vendored-mosquitto = ["libmosquitto-sys/vendored-mosquitto"]
+vendored-openssl = ["libmosquitto-sys/vendored-openssl"]
+default = ["vendored-mosquitto", "libmosquitto-sys/openssl-sys"]
+
 [dependencies]
 async-channel = "1.5"
 lazy_static = "1.4"
 libc = "0.2"
-libmosquitto-sys = {version="0.1.2", path="../libmosquitto-sys" }
+libmosquitto-sys = {version="0.2", path="../libmosquitto-sys", default-features=false }
 thiserror = "1.0"
 
 [dev-dependencies]

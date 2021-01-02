@@ -28,6 +28,13 @@
 //!     })
 //! }
 //! ```
+//!
+//! ## Features
+//!
+//! The following feature flags are available:
+//!
+//! *  `vendored-mosquitto` - use bundled libmosquitto 2.4 library. This is on by default.
+//! * `vendored-openssl` - build openssl from source, rather than using the system library. Recommended for macOS and Windows users to enable this.
 mod client;
 mod error;
 mod lowlevel;

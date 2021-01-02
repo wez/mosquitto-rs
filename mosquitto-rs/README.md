@@ -1,5 +1,8 @@
 # An async MQTT client
 
+![build](https://github.com/wez/mosquitto-rs/workflows/Rust/badge.svg)
+[![Crates.io](https://img.shields.io/crates/v/mosquitto-rs)](https://docs.rs/mosquitto-rs)
+
 This crate implements an async MQTT client using libmosquitto.
 
 ```rust
