@@ -66,3 +66,12 @@ The following feature flags are available:
 
 * `vendored-mosquitto` - use bundled libmosquitto 2.4 library. This is on by default.
 * `vendored-openssl` - build openssl from source, rather than using the system library. Recommended for macOS and Windows users to enable this.
+
+## Windows
+
+On Windows, you'll need to build with `--feature vendored-openssl`.  Currently,
+due to <https://github.com/alexcrichton/openssl-src-rs/issues/82>, you'll need
+to deploy the dlls found in a randomized directory such as
+`target\release\build\openssl-sys-HASH\out\openssl-build\install\bin` alongside
+your application for it to start up correctly.
+
