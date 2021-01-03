@@ -89,8 +89,8 @@ static inline int pthread_mutex_destroy(pthread_mutex_t *mutex) {
   return 0;
 }
 
-static inline int pthread_mutex_init(pthread_mutex_t *restrict mutex,
-const pthread_mutexattr_t *restrict attr) {
+static inline int pthread_mutex_init(pthread_mutex_t *mutex,
+    const pthread_mutexattr_t *attr) {
   *mutex = CreateMutexA(NULL, FALSE, NULL);
   if (*mutex) {
     return 0;
