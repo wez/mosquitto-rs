@@ -52,11 +52,14 @@ fn main() {
         "mosquitto/lib/util_topic.c",
         "mosquitto/lib/will_mosq.c",
     ]);
+    cfg.define("WITH_THREADING", None);
     if !target.contains("windows") {
         cfg.flag("-fvisibility=hidden");
-        cfg.define("WITH_THREADING", None);
         cfg.define("WITH_UNIX_SOCKETS", None);
     } else {
+        // Pick up our pthread.h wrapper
+        cfg.include("mosquitto/..");
+        println!("cargo:rerun-if-changed=pthread.h");
         cfg.define("WIN32", None);
         cfg.define("_CRT_SECURE_NO_WARNINGS", None);
         cfg.define("_CRT_NONSTDC_NO_DEPRECATE", None);
