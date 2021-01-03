@@ -56,6 +56,11 @@ fn main() {
         cfg.flag("-fvisibility=hidden");
         cfg.define("WITH_THREADING", None);
         cfg.define("WITH_UNIX_SOCKETS", None);
+    } else {
+        cfg.define("WIN32", None);
+        cfg.define("_CRT_SECURE_NO_WARNINGS", None);
+        cfg.define("_CRT_NONSTDC_NO_DEPRECATE", None);
+        cfg.define("LIBMOSQUITTO_STATIC", None);
     }
     cfg.warnings(false);
 
@@ -68,8 +73,13 @@ fn main() {
                     cfg.define("WITH_TLS", None);
                     cfg.define("WITH_TLS_PSK", None);
                     cfg.define("WITH_EC", None);
-                    println!("cargo:rustc-link-lib=ssl");
-                    println!("cargo:rustc-link-lib=crypto");
+                    if !target.contains("windows") {
+                        println!("cargo:rustc-link-lib=ssl");
+                        println!("cargo:rustc-link-lib=crypto");
+                    } else {
+                        println!("cargo:rustc-link-lib=static=libssl");
+                        println!("cargo:rustc-link-lib=static=libcrypto");
+                    }
                 }
             }
         }

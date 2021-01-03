@@ -86,12 +86,9 @@ impl Error {
         } else if err == mosq_err_t::MOSQ_ERR_EAI as c_int {
             // Mosquitto stuffs the getaddrinfo() error code into errno,
             // so we can extract it and get the message manually here
-            unsafe {
-                let err = std::io::Error::last_os_error();
-                let err = err.raw_os_error().unwrap_or(0);
-                let reason = std::ffi::CStr::from_ptr(libc::gai_strerror(err));
-                Self::Resolution(reason.to_string_lossy().into())
-            }
+            let err = std::io::Error::last_os_error();
+            let reason = gai_error(&err);
+            Self::Resolution(reason)
         } else {
             if let Some(e) = ERRMAP.get(&err) {
                 Self::Mosq(*e)
@@ -99,5 +96,19 @@ impl Error {
                 Self::UnknownMosq(err)
             }
         }
+    }
+}
+
+#[cfg(windows)]
+fn gai_error(err: &std::io::Error) -> String {
+    err.to_string()
+}
+
+#[cfg(unix)]
+fn gai_error(err: &std::io::Error) -> String {
+    unsafe {
+        let err = err.raw_os_error().unwrap_or(0);
+        let reason = std::ffi::CStr::from_ptr(libc::gai_strerror(err));
+        reason.to_string_lossy().into()
     }
 }

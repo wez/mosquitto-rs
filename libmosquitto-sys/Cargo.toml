@@ -15,7 +15,7 @@ repository = "https://github.com/wez/mosquitto-rs"
 
 [features]
 vendored-mosquitto = []
-vendored-openssl = ["openssl-sys/vendored"]
+vendored-openssl = ["openssl-sys/vendored", "openssl-sys"]
 default = ["vendored-mosquitto", "openssl-sys"]
 
 [dependencies]
