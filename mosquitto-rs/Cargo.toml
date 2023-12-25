@@ -17,11 +17,11 @@ vendored-openssl = ["libmosquitto-sys/vendored-openssl"]
 default = ["vendored-mosquitto", "libmosquitto-sys/openssl-sys"]
 
 [dependencies]
-async-channel = "1.5"
+async-channel = "2.1"
 lazy_static = "1.4"
 libc = "0.2"
 libmosquitto-sys = {version="0.2", path="../libmosquitto-sys", default-features=false }
 thiserror = "1.0"
 
 [dev-dependencies]
-smol = "1.2"
+smol = "1.3"
