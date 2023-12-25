@@ -244,10 +244,10 @@ impl Client {
     /// and delivered to new subscribers.
     ///
     /// Returns the assigned MessageId value for the publish.
-    pub async fn publish(
+    pub async fn publish<T: AsRef<str>, P: AsRef<[u8]>>(
         &mut self,
-        topic: &str,
-        payload: &[u8],
+        topic: T,
+        payload: P,
         qos: QoS,
         retain: bool,
     ) -> Result<MessageId, Error> {
@@ -258,7 +258,9 @@ impl Client {
             // Lock the map before we send, so that we can guarantee to
             // win the race with populating the map vs. signalling completion
             let mut mids = handlers.mids.lock().unwrap();
-            let mid = self.mosq.publish(topic, payload, qos, retain)?;
+            let mid = self
+                .mosq
+                .publish(topic.as_ref(), payload.as_ref(), qos, retain)?;
             mids.insert(mid, tx);
         }
 

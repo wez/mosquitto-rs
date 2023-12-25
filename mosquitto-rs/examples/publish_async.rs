@@ -10,7 +10,7 @@ fn main() -> Result<(), Error> {
         let rc = client
             .connect("localhost", 1883, std::time::Duration::from_secs(5), None)
             .await?;
-        println!("connect: {}", rc);
+        println!("connect: {rc}");
 
         let subscriptions = client.subscriber().unwrap();
 
@@ -18,12 +18,12 @@ fn main() -> Result<(), Error> {
         println!("subscribed");
 
         client
-            .publish("test/this", b"woot", QoS::AtMostOnce, false)
+            .publish("test/this", "woot", QoS::AtMostOnce, false)
             .await?;
         println!("published");
 
         if let Ok(msg) = subscriptions.recv().await {
-            println!("msg: {:?}", msg);
+            println!("msg: {msg:?}");
         }
 
         Ok(())
