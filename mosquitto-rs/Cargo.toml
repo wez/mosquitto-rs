@@ -2,7 +2,7 @@
 name = "mosquitto-rs"
 version = "0.4.1"
 authors = ["Wez Furlong"]
-edition = "2018"
+edition = "2021"
 readme = "README.md"
 license = "MIT"
 description = "An async MQTT client based on libmosquitto"
