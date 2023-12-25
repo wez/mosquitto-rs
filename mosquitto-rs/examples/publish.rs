@@ -2,17 +2,17 @@
 //! You probably want to use the higher level client;
 //! take a look at `publish_async.rs`
 use mosquitto_rs::*;
-use std::cell::RefCell;
+use std::sync::Mutex;
 
 fn main() -> Result<(), Error> {
     #[derive(Debug)]
     struct Handlers {
-        data: RefCell<i32>,
+        data: Mutex<i32>,
     }
 
     impl Handlers {
         fn bump_and_print(&self) {
-            let mut data = self.data.borrow_mut();
+            let mut data = self.data.lock().unwrap();
             *data += 1;
             println!("data is now {}", *data);
         }
@@ -20,32 +20,32 @@ fn main() -> Result<(), Error> {
 
     impl Callbacks for Handlers {
         fn on_connect(&self, mosq: &mut Mosq, status: ConnectionStatus) {
-            println!("Connected: status={}", status);
+            println!("Connected: status={status}");
             if !status.is_successful() {
                 let _ = mosq.disconnect();
             } else {
                 let sub_mid = mosq.subscribe("test/topic", QoS::AtMostOnce);
-                println!("Queued subscribe mid {:?}", sub_mid);
+                println!("Queued subscribe mid {sub_mid:?}");
                 self.bump_and_print();
             }
         }
 
         fn on_publish(&self, _: &mut Mosq, mid: MessageId) {
-            println!("published: mid={}", mid);
+            println!("published: mid={mid}");
             self.bump_and_print();
         }
 
         fn on_disconnect(&self, _: &mut Mosq, reason: i32) {
-            println!("disconnected: reason={}", reason);
+            println!("disconnected: reason={reason}");
             self.bump_and_print();
         }
 
         fn on_subscribe(&self, mosq: &mut Mosq, mid: MessageId, granted_qos: &[QoS]) {
-            println!("on_subscribe: mid={} {:?}", mid, granted_qos);
+            println!("on_subscribe: mid={mid} {granted_qos:?}");
             let mid = mosq
                 .publish("test/topic", b"hello!", QoS::AtMostOnce, false)
                 .ok();
-            println!("Queued publish with mid = {:?}", mid);
+            println!("Queued publish with mid = {mid:?}");
         }
 
         fn on_message(
@@ -58,8 +58,7 @@ fn main() -> Result<(), Error> {
             retain: bool,
         ) {
             println!(
-                "Got message {} on topic {}, payload: {:?}, qos:{:?}, retain:{}",
-                mid, topic, payload, qos, retain
+                "Got message {mid} on topic {topic}, payload: {payload:?}, qos:{qos:?}, retain:{retain}"
             );
             mosq.disconnect().ok();
         }
@@ -67,7 +66,7 @@ fn main() -> Result<(), Error> {
 
     let mosq = Mosq::with_id(
         Handlers {
-            data: RefCell::new(0),
+            data: Mutex::new(0),
         },
         "woot",
         false,

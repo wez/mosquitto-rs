@@ -62,7 +62,7 @@ pub(crate) fn cstr(s: &str) -> Result<CString, Error> {
 /// You probably want to look at [Client](struct.Client.html) instead.
 pub struct Mosq<CB = ()>
 where
-    CB: Callbacks,
+    CB: Callbacks + Send + Sync,
 {
     m: *mut sys::mosquitto,
     cb: Option<Arc<CallbackWrapper<CB>>>,
@@ -70,10 +70,10 @@ where
 
 // libmosquitto is internally thread safe, so tell the rust compiler
 // that the Mosq wrapper type is Sync and Send.
-unsafe impl<CB: Callbacks> Sync for Mosq<CB> {}
-unsafe impl<CB: Callbacks> Send for Mosq<CB> {}
+unsafe impl<CB: Callbacks + Send + Sync> Sync for Mosq<CB> {}
+unsafe impl<CB: Callbacks + Send + Sync> Send for Mosq<CB> {}
 
-impl<CB: Callbacks> Mosq<CB> {
+impl<CB: Callbacks + Send + Sync> Mosq<CB> {
     /// Create a new client instance with a random client id
     pub fn with_auto_id(callbacks: CB) -> Result<Self, Error> {
         init_library();
@@ -738,7 +738,7 @@ impl QoS {
     }
 }
 
-impl<CB: Callbacks> Drop for Mosq<CB> {
+impl<CB: Callbacks + Send + Sync> Drop for Mosq<CB> {
     fn drop(&mut self) {
         unsafe {
             sys::mosquitto_destroy(self.m);
