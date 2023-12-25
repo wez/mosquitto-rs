@@ -1,6 +1,5 @@
 use crate::Error;
 pub(crate) use libmosquitto_sys as sys;
-use std::cell::{Ref, RefCell};
 use std::convert::TryInto;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_void};
@@ -310,12 +309,12 @@ impl<CB: Callbacks> Mosq<CB> {
 
     /// Returns a reference to the callbacks previously registered
     /// during construction.
-    pub fn get_callbacks(&self) -> Ref<CB> {
-        self.cb
+    pub fn get_callbacks(&self) -> &CB {
+        &self
+            .cb
             .as_ref()
             .expect("get_callbacks not to be called on a transient Mosq")
             .cb
-            .borrow()
     }
 
     /// Runs the message loop for the client.
@@ -541,7 +540,13 @@ impl ConnectionStatus {
 }
 
 struct CallbackWrapper<T: Callbacks> {
-    cb: RefCell<T>,
+    /// This used to be RefCell, but I've observed that the underlying
+    /// library can make recursive dispatches to the callbacks,
+    /// so we must not use any kind of lock or runtime checked
+    /// borrow to guard access: we rely instead of this being
+    /// immutable here and leaving it to the impl of Callbacks
+    /// to appropriate scope any interior mutability
+    cb: Box<T>,
 }
 
 fn with_transient_client<F: FnOnce(&mut Mosq)>(m: *mut sys::mosquitto, func: F) {
@@ -552,9 +557,7 @@ fn with_transient_client<F: FnOnce(&mut Mosq)>(m: *mut sys::mosquitto, func: F) 
 
 impl<T: Callbacks> CallbackWrapper<T> {
     fn new(cb: T) -> Self {
-        Self {
-            cb: RefCell::new(cb),
-        }
+        Self { cb: Box::new(cb) }
     }
 
     unsafe fn resolve_self<'a>(cb: *mut c_void) -> &'a Self {
@@ -564,21 +567,21 @@ impl<T: Callbacks> CallbackWrapper<T> {
     unsafe extern "C" fn connect(m: *mut sys::mosquitto, cb: *mut c_void, rc: c_int) {
         let cb = Self::resolve_self(cb);
         with_transient_client(m, |client| {
-            cb.cb.borrow().on_connect(client, ConnectionStatus(rc));
+            cb.cb.on_connect(client, ConnectionStatus(rc));
         });
     }
 
     unsafe extern "C" fn disconnect(m: *mut sys::mosquitto, cb: *mut c_void, rc: c_int) {
         let cb = Self::resolve_self(cb);
         with_transient_client(m, |client| {
-            cb.cb.borrow().on_disconnect(client, rc);
+            cb.cb.on_disconnect(client, rc);
         });
     }
 
     unsafe extern "C" fn publish(m: *mut sys::mosquitto, cb: *mut c_void, mid: MessageId) {
         let cb = Self::resolve_self(cb);
         with_transient_client(m, |client| {
-            cb.cb.borrow().on_publish(client, mid);
+            cb.cb.on_publish(client, mid);
         });
     }
 
@@ -593,7 +596,7 @@ impl<T: Callbacks> CallbackWrapper<T> {
         with_transient_client(m, |client| {
             let granted_qos = std::slice::from_raw_parts(granted_qos, qos_count as usize);
             let granted_qos: Vec<QoS> = granted_qos.iter().map(QoS::from_int).collect();
-            cb.cb.borrow().on_subscribe(client, mid, &granted_qos);
+            cb.cb.on_subscribe(client, mid, &granted_qos);
         });
     }
 
@@ -607,7 +610,7 @@ impl<T: Callbacks> CallbackWrapper<T> {
             let msg = &*msg;
             let topic = CStr::from_ptr(msg.topic);
             let topic = topic.to_string_lossy().to_string();
-            cb.cb.borrow().on_message(
+            cb.cb.on_message(
                 client,
                 msg.mid,
                 topic,

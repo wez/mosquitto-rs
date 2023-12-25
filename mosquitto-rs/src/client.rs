@@ -244,9 +244,6 @@ impl Client {
     /// and delivered to new subscribers.
     ///
     /// Returns the assigned MessageId value for the publish.
-    /// The publish may not complete immediately.
-    /// You can use [set_callbacks](#method.set_callbacks) to register
-    /// an `on_publish` event to determine when it completes.
     pub async fn publish(
         &mut self,
         topic: &str,
