@@ -1,3 +1,6 @@
+//! This example shows how to use the low level client.
+//! You probably want to use the higher level client;
+//! take a look at `publish_async.rs`
 use mosquitto_rs::*;
 use std::cell::RefCell;
 

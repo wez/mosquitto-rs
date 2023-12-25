@@ -664,6 +664,11 @@ pub type PasswdCallback =
 
 /// Defines handlers that can be used to determine when various
 /// functions have completed.
+/// Take care: the underlying mosquitto library can make nested/reentrant
+/// calls through your `Callbacks` implementation. If you use interior
+/// mutability, be sure to limit the scope/duration of any locks such
+/// that they do no encompass any other calls (such as attempts to
+/// publish or subscribe) into mosquitto.
 pub trait Callbacks {
     /// called when the connection has been acknowledged by the broker.
     /// `reason` holds the connection return code.
