@@ -5,6 +5,7 @@ use async_channel::{bounded, unbounded, Receiver, Sender};
 use std::collections::HashMap;
 use std::os::raw::c_int;
 use std::path::Path;
+use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -161,8 +162,9 @@ impl Callbacks for Handler {
 }
 
 /// A high-level, asynchronous mosquitto MQTT client
+#[derive(Clone)]
 pub struct Client {
-    mosq: Mosq<Handler>,
+    mosq: Arc<Mosq<Handler>>,
 }
 
 impl Client {
@@ -172,14 +174,18 @@ impl Client {
     pub fn with_id(id: &str, clean_session: bool) -> Result<Self, Error> {
         let mosq = Mosq::with_id(Handler::new(), id, clean_session)?;
         mosq.start_loop_thread()?;
-        Ok(Self { mosq })
+        Ok(Self {
+            mosq: Arc::new(mosq),
+        })
     }
 
     /// Create a new client instance with a random client id
     pub fn with_auto_id() -> Result<Self, Error> {
         let mosq = Mosq::with_auto_id(Handler::new())?;
         mosq.start_loop_thread()?;
-        Ok(Self { mosq })
+        Ok(Self {
+            mosq: Arc::new(mosq),
+        })
     }
 
     /// Configure the client with an optional username and password.
@@ -187,7 +193,7 @@ impl Client {
     /// Whether you need to configure these credentials depends on the
     /// broker configuration.
     pub fn set_username_and_password(
-        &mut self,
+        &self,
         username: Option<&str>,
         password: Option<&str>,
     ) -> Result<(), Error> {
@@ -213,7 +219,7 @@ impl Client {
     /// then an Error::RejectedConnection() variant will be returned
     /// so that you don't have to manually check the success.
     pub async fn connect(
-        &mut self,
+        &self,
         host: &str,
         port: c_int,
         keep_alive_interval: Duration,
@@ -245,7 +251,7 @@ impl Client {
     ///
     /// Returns the assigned MessageId value for the publish.
     pub async fn publish<T: AsRef<str>, P: AsRef<[u8]>>(
-        &mut self,
+        &self,
         topic: T,
         payload: P,
         qos: QoS,
@@ -277,7 +283,7 @@ impl Client {
     /// This method can be called only once; the first time it returns
     /// the channel and subsequently it no longer has the channel
     /// receiver to retur, so will yield None.
-    pub fn subscriber(&mut self) -> Option<Receiver<Message>> {
+    pub fn subscriber(&self) -> Option<Receiver<Message>> {
         let handlers = self.mosq.get_callbacks();
         let x = handlers.subscriber_rx.lock().unwrap().take();
         x

@@ -6,7 +6,7 @@ use mosquitto_rs::*;
 
 fn main() -> Result<(), Error> {
     smol::block_on(async {
-        let mut client = Client::with_auto_id()?;
+        let client = Client::with_auto_id()?;
         let rc = client
             .connect("localhost", 1883, std::time::Duration::from_secs(5), None)
             .await?;
