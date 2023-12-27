@@ -8,4 +8,4 @@ You most likely want to look at the companion crate mosquitto-rs instead
 of using this crate directly.
 
 At the time of writing, libmosquitto-sys targets the API provided
-by libmosquitto 1.4.
+by libmosquitto 2.0.9

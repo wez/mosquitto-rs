@@ -1,6 +1,6 @@
 [package]
 name = "mosquitto-rs"
-version = "0.6.1"
+version = "0.6.2"
 authors = ["Wez Furlong"]
 edition = "2021"
 readme = "README.md"
@@ -20,7 +20,7 @@ default = ["vendored-mosquitto", "libmosquitto-sys/openssl-sys"]
 async-channel = "2.1"
 lazy_static = "1.4"
 libc = "0.2"
-libmosquitto-sys = {version="0.2", path="../libmosquitto-sys", default-features=false }
+libmosquitto-sys = {version="0.2.1", path="../libmosquitto-sys", default-features=false }
 thiserror = "1.0"
 
 [dev-dependencies]
