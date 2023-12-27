@@ -83,6 +83,7 @@ fn main() {
                     } else {
                         println!("cargo:rustc-link-lib=static=libssl");
                         println!("cargo:rustc-link-lib=static=libcrypto");
+                        println!("cargo:rustc-link-lib=user32");
                     }
                 }
             }
