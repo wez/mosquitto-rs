@@ -64,6 +64,7 @@ fn main() {
         cfg.define("_CRT_SECURE_NO_WARNINGS", None);
         cfg.define("_CRT_NONSTDC_NO_DEPRECATE", None);
         cfg.define("LIBMOSQUITTO_STATIC", None);
+        println!("cargo:rustc-link-lib=crypt32");
     }
     cfg.warnings(false);
 
