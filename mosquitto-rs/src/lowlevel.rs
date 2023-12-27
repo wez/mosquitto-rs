@@ -280,6 +280,45 @@ impl<CB: Callbacks + Send + Sync> Mosq<CB> {
         Error::result(err, mid)
     }
 
+    /// Configure will information for a mosquitto instance.
+    /// By default, clients do not have a will.
+    /// This must be called before calling `connect`.
+    ///
+    /// The payload size can be 0-283, 435 or 455 bytes; other values
+    /// will generate an error result.
+    ///
+    /// `retain` will set the message to be retained by the broker,
+    /// and delivered to new subscribers.
+    pub fn set_last_will(
+        &self,
+        topic: &str,
+        payload: &[u8],
+        qos: QoS,
+        retain: bool,
+    ) -> Result<(), Error> {
+        let err = unsafe {
+            sys::mosquitto_will_set(
+                self.m,
+                cstr(topic)?.as_ptr(),
+                payload
+                    .len()
+                    .try_into()
+                    .map_err(|_| Error::Mosq(sys::mosq_err_t::MOSQ_ERR_PAYLOAD_SIZE))?,
+                payload.as_ptr() as *const _,
+                qos as c_int,
+                retain,
+            )
+        };
+        Error::result(err, ())
+    }
+
+    /// Remove a previously configured will.
+    /// This must be called before calling connect
+    pub fn clear_last_will(&self) -> Result<(), Error> {
+        let err = unsafe { sys::mosquitto_will_clear(self.m) };
+        Error::result(err, ())
+    }
+
     /// Establish a subscription for topics that match `pattern`.
     ///
     /// Your `Callbacks::on_message` handler will be called as messages

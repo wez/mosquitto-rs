@@ -278,6 +278,32 @@ impl Client {
         Ok(mid)
     }
 
+    /// Configure will information for a mosquitto instance.
+    /// By default, clients do not have a will.
+    /// This must be called before calling `connect`.
+    ///
+    /// The payload size can be 0-283, 435 or 455 bytes; other values
+    /// will generate an error result.
+    ///
+    /// `retain` will set the message to be retained by the broker,
+    /// and delivered to new subscribers.
+    pub fn set_last_will<T: AsRef<str>, P: AsRef<[u8]>>(
+        &self,
+        topic: T,
+        payload: P,
+        qos: QoS,
+        retain: bool,
+    ) -> Result<(), Error> {
+        self.mosq
+            .set_last_will(topic.as_ref(), payload.as_ref(), qos, retain)
+    }
+
+    /// Remove a previously configured will.
+    /// This must be called before calling connect
+    pub fn clear_last_will(&self) -> Result<(), Error> {
+        self.mosq.clear_last_will()
+    }
+
     /// Returns a channel that yields messages from topics that this
     /// client has subscribed to.
     /// This method can be called only once; the first time it returns
