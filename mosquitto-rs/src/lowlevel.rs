@@ -335,6 +335,13 @@ impl<CB: Callbacks + Send + Sync> Mosq<CB> {
         Error::result(err, mid)
     }
 
+    /// Remove subscription(s) for topics that match `pattern`.
+    pub fn unsubscribe(&self, pattern: &str) -> Result<MessageId, Error> {
+        let mut mid = 0;
+        let err = unsafe { sys::mosquitto_unsubscribe(self.m, &mut mid, cstr(pattern)?.as_ptr()) };
+        Error::result(err, mid)
+    }
+
     fn set_callbacks(self) -> Self {
         unsafe {
             sys::mosquitto_connect_callback_set(self.m, Some(CallbackWrapper::<CB>::connect));
@@ -342,6 +349,10 @@ impl<CB: Callbacks + Send + Sync> Mosq<CB> {
             sys::mosquitto_publish_callback_set(self.m, Some(CallbackWrapper::<CB>::publish));
             sys::mosquitto_subscribe_callback_set(self.m, Some(CallbackWrapper::<CB>::subscribe));
             sys::mosquitto_message_callback_set(self.m, Some(CallbackWrapper::<CB>::message));
+            sys::mosquitto_unsubscribe_callback_set(
+                self.m,
+                Some(CallbackWrapper::<CB>::unsubscribe),
+            );
         }
         self
     }
@@ -624,6 +635,13 @@ impl<T: Callbacks> CallbackWrapper<T> {
         });
     }
 
+    unsafe extern "C" fn unsubscribe(m: *mut sys::mosquitto, cb: *mut c_void, mid: MessageId) {
+        let cb = Self::resolve_self(cb);
+        with_transient_client(m, |client| {
+            cb.cb.on_unsubscribe(client, mid);
+        });
+    }
+
     unsafe extern "C" fn subscribe(
         m: *mut sys::mosquitto,
         cb: *mut c_void,
@@ -737,6 +755,9 @@ pub trait Callbacks {
         _retain: bool,
     ) {
     }
+
+    /// Called when the broker response to an unsubscription request
+    fn on_unsubscribe(&self, _client: &mut Mosq, _mid: MessageId) {}
 }
 
 impl Callbacks for () {}

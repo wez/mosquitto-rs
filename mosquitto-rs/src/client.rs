@@ -139,6 +139,17 @@ impl Callbacks for Handler {
         }
     }
 
+    fn on_unsubscribe(&self, client: &mut Mosq, mid: MessageId) {
+        let mut mids = self.mids.lock().unwrap();
+        if let Some(tx) = mids.remove(&mid) {
+            if tx.try_send(mid).is_err() {
+                let _ = client.disconnect();
+            }
+        } else {
+            let _ = client.disconnect();
+        }
+    }
+
     fn on_message(
         &self,
         client: &mut Mosq,
@@ -327,6 +338,27 @@ impl Client {
             // win the race with populating the map vs. signalling completion
             let mut mids = handlers.mids.lock().unwrap();
             let mid = self.mosq.subscribe(pattern, qos)?;
+            mids.insert(mid, tx);
+        }
+
+        let _ = rx
+            .recv()
+            .await
+            .map_err(|_| Error::Mosq(mosq_err_t::MOSQ_ERR_INVAL))?;
+
+        Ok(())
+    }
+
+    /// Remove subscription(s) for topics that match `pattern`.
+    pub async fn unsubscribe(&self, pattern: &str) -> Result<(), Error> {
+        let (tx, rx) = bounded(1);
+
+        {
+            let handlers = self.mosq.get_callbacks();
+            // Lock the map before we send, so that we can guarantee to
+            // win the race with populating the map vs. signalling completion
+            let mut mids = handlers.mids.lock().unwrap();
+            let mid = self.mosq.unsubscribe(pattern)?;
             mids.insert(mid, tx);
         }
 
