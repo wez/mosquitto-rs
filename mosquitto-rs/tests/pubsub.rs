@@ -32,7 +32,7 @@ fn pubsub() -> anyhow::Result<()> {
         println!("published");
 
         let msg = subscriptions.recv().await?;
-            println!("msg: {msg:?}");
+        println!("msg: {msg:?}");
 
         Ok(())
     })
