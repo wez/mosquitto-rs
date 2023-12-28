@@ -18,6 +18,14 @@ jobs:
     - uses: actions/checkout@v2
       with:
          submodules: "recursive"
+
+    - name: Start Mosquitto
+      uses: namoshek/mosquitto-github-action@v1
+      with:
+        ports: '1883:1883'
+        config: ${{ github.workspace }}/mosquitto-rs/mosquitto.conf
+        container-name: 'mqtt'
+
     - name: Build
       run: cargo build --all --verbose
     - name: Examples
@@ -26,6 +34,7 @@ jobs:
       run: cargo test --all --verbose
     - name: Check formatting
       run: cargo fmt --all -- --check
+
   system-libs:
     strategy:
       fail-fast: false
