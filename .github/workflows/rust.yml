@@ -14,26 +14,27 @@ jobs:
     strategy:
       fail-fast: false
     runs-on: ubuntu-latest
+    env:
+      MQTT_SERVER: 127.0.0.1
     steps:
     - uses: actions/checkout@v2
       with:
          submodules: "recursive"
+    - name: Build
+      run: cargo build --all
+    - name: Examples
+      run: cargo build --all --examples
 
     - name: Start Mosquitto
       uses: namoshek/mosquitto-github-action@v1
       with:
         ports: '1883:1883'
         config: ${{ github.workspace }}/mosquitto-rs/mosquitto.conf
-        container-name: 'mqtt'
-
-    - name: Build
-      run: cargo build --all --verbose
-    - name: Examples
-      run: cargo build --all --verbose --examples
     - name: Run tests
-      run: cargo test --all --verbose
+      run: cargo test --all -- --show-output
     - name: Check formatting
       run: cargo fmt --all -- --check
+
 
   system-libs:
     strategy:
@@ -46,11 +47,11 @@ jobs:
         sudo -n apt-get update
         sudo -n apt-get install -y libmosquitto-dev
     - name: Build
-      run: cd mosquitto-rs && cargo build --no-default-features --verbose
+      run: cd mosquitto-rs && cargo build --no-default-features
     - name: Examples
-      run: cd mosquitto-rs && cargo build --no-default-features --verbose --examples
+      run: cd mosquitto-rs && cargo build --no-default-features --examples
     - name: Run tests
-      run: cd mosquitto-rs && cargo test --no-default-features --verbose
+      run: cd mosquitto-rs && cargo test --no-default-features
   mac:
     strategy:
       fail-fast: false
@@ -60,11 +61,11 @@ jobs:
       with:
          submodules: "recursive"
     - name: Build
-      run: cargo build -p mosquitto-rs --all-features --verbose
+      run: cargo build -p mosquitto-rs --all-features
     - name: Examples
-      run: cargo build -p mosquitto-rs --all-features --verbose --examples
+      run: cargo build -p mosquitto-rs --all-features --examples
     - name: Run tests
-      run: cargo test -p mosquitto-rs --all-features --verbose
+      run: cargo test -p mosquitto-rs --all-features
   windows:
     strategy:
       fail-fast: false
@@ -74,8 +75,8 @@ jobs:
       with:
          submodules: "recursive"
     - name: Build
-      run: cargo build -p mosquitto-rs --all-features --verbose
+      run: cargo build -p mosquitto-rs --all-features
     - name: Examples
-      run: cargo build -p mosquitto-rs --all-features --verbose --examples
+      run: cargo build -p mosquitto-rs --all-features --examples
     - name: Run tests
-      run: cargo test -p mosquitto-rs --all-features --verbose
+      run: cargo test -p mosquitto-rs --all-features

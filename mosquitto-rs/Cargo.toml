@@ -25,4 +25,5 @@ libmosquitto-sys = {version="0.2.2", path="../libmosquitto-sys", default-feature
 thiserror = "1.0"
 
 [dev-dependencies]
+anyhow = "1.0"
 smol = "1.3"
