@@ -585,7 +585,7 @@ impl std::fmt::Debug for ConnectionStatus {
 impl ConnectionStatus {
     /// Returns true if the connection attempt was successful.
     pub fn is_successful(&self) -> bool {
-        self.0 == sys::mqtt311_connack_codes::CONNACK_ACCEPTED as _
+        self.0 == sys::mqtt311_connack_codes::CONNACK_ACCEPTED as c_int
     }
 }
 

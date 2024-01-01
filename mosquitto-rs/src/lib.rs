@@ -1,3 +1,5 @@
+#![cfg_attr(docsrs, feature(doc_cfg))]
+
 //! This crate implements an async MQTT client using libmosquitto.
 //!
 //! ```no_run
@@ -33,11 +35,16 @@
 //!
 //! The following feature flags are available:
 //!
-//! *  `vendored-mosquitto` - use bundled libmosquitto 2.4 library. This is on by default.
+//! * `router` - include the router module and `MqttRouter` type. This is on by default.
+//! * `vendored-mosquitto` - use bundled libmosquitto 2.4 library. This is on by default.
+//! * `vendored-mosquitto-tls` - enable tls support in the bundled libmosquitto. This is on by default.
 //! * `vendored-openssl` - build openssl from source, rather than using the system library. Recommended for macOS and Windows users to enable this.
 mod client;
 mod error;
 mod lowlevel;
+#[cfg_attr(docsrs, doc(cfg(feature = "router")))]
+#[cfg(feature = "router")]
+pub mod router;
 
 pub use client::*;
 pub use error::*;
