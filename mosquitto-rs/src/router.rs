@@ -140,7 +140,7 @@ where
 pub struct State<S>(pub S);
 impl<S> FromRequest<S> for State<S>
 where
-    S: Clone,
+    S: Clone + Send + Sync,
 {
     fn from_request(request: &Request<S>) -> RouterResult<State<S>> {
         Ok(Self(request.state.clone()))
@@ -152,12 +152,12 @@ where
 /// as it is an implementation detail managed via the `MakeDispatcher` trait.
 pub struct Dispatcher<S = ()>
 where
-    S: Clone,
+    S: Clone + Send + Sync,
 {
-    func: Box<dyn Fn(Request<S>) -> Pin<Box<dyn Future<Output = MqttHandlerResult>>>>,
+    func: Box<dyn Fn(Request<S>) -> Pin<Box<dyn Future<Output = MqttHandlerResult> + Send + Sync>> + Send + Sync>,
 }
 
-impl<S: Clone + 'static> Dispatcher<S> {
+impl<S: Clone + Send + Sync + 'static> Dispatcher<S> {
     pub async fn call(&self, params: JsonValue, message: Message, state: S) -> MqttHandlerResult {
         (self.func)(Request {
             params,
@@ -168,7 +168,7 @@ impl<S: Clone + 'static> Dispatcher<S> {
     }
 
     pub fn new(
-        func: Box<dyn Fn(Request<S>) -> Pin<Box<dyn Future<Output = MqttHandlerResult>>>>,
+        func: Box<dyn Fn(Request<S>) -> Pin<Box<dyn Future<Output = MqttHandlerResult> + Send + Sync>> + Send + Sync>,
     ) -> Self {
         Self { func }
     }
@@ -178,7 +178,7 @@ impl<S: Clone + 'static> Dispatcher<S> {
 /// that can be stored into a router.
 /// You do not normally need to consider the `MakeDispatcher` trait directly,
 /// as it is pre-registered for the compatible combinations of arguments.
-pub trait MakeDispatcher<T, S: Clone> {
+pub trait MakeDispatcher<T, S: Clone + Send + Sync> {
     fn make_dispatcher(func: Self) -> Dispatcher<S>;
 }
 
@@ -189,15 +189,15 @@ macro_rules! impl_make_dispatcher {
 
 impl<F, S, Fut, $($ty,)* $last> MakeDispatcher<($($ty,)* $last,), S> for F
 where
-    F: (Fn($($ty,)* $last) -> Fut) + Clone + 'static,
-    Fut: Future<Output = MqttHandlerResult>,
-    S: Clone + 'static,
+    F: (Fn($($ty,)* $last) -> Fut) + Clone + Send + Sync + 'static,
+    Fut: Future<Output = MqttHandlerResult> + Send + Sync,
+    S: Clone + Send + Sync + 'static,
     $( $ty: FromRequest<S>, )*
     $last: FromRequest<S>
 {
     #[allow(non_snake_case)]
     fn make_dispatcher(func: F) -> Dispatcher<S> {
-        let wrap: Box<dyn Fn(Request<S>) -> Pin<Box<dyn Future<Output = MqttHandlerResult>>>> =
+        let wrap: Box<dyn Fn(Request<S>) -> Pin<Box<dyn Future<Output = MqttHandlerResult> + Send + Sync>> + Send + Sync> =
             Box::new(move |request: Request<S>| {
                 let func = func.clone();
                 Box::pin(async move {
@@ -252,13 +252,13 @@ all_the_tuples!(impl_make_dispatcher);
 /// is relatively cheap.
 pub struct MqttRouter<S = ()>
 where
-    S: Clone,
+    S: Clone + Send + Sync,
 {
     router: Router<Dispatcher<S>>,
     client: Client,
 }
 
-impl<S: Clone + 'static> MqttRouter<S> {
+impl<S: Clone + Send + Sync + 'static> MqttRouter<S> {
     /// Create a new router.
     ///
     /// If you don't want to specify the state type, construct it using
