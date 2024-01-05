@@ -154,7 +154,11 @@ pub struct Dispatcher<S = ()>
 where
     S: Clone + Send + Sync,
 {
-    func: Box<dyn Fn(Request<S>) -> Pin<Box<dyn Future<Output = MqttHandlerResult> + Send + Sync>> + Send + Sync>,
+    func: Box<
+        dyn Fn(Request<S>) -> Pin<Box<dyn Future<Output = MqttHandlerResult> + Send + Sync>>
+            + Send
+            + Sync,
+    >,
 }
 
 impl<S: Clone + Send + Sync + 'static> Dispatcher<S> {
@@ -168,7 +172,11 @@ impl<S: Clone + Send + Sync + 'static> Dispatcher<S> {
     }
 
     pub fn new(
-        func: Box<dyn Fn(Request<S>) -> Pin<Box<dyn Future<Output = MqttHandlerResult> + Send + Sync>> + Send + Sync>,
+        func: Box<
+            dyn Fn(Request<S>) -> Pin<Box<dyn Future<Output = MqttHandlerResult> + Send + Sync>>
+                + Send
+                + Sync,
+        >,
     ) -> Self {
         Self { func }
     }
