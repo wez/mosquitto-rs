@@ -90,7 +90,7 @@ pub enum ClientOption<'a> {
 
 /// Represents a received message that matches one or
 /// more of the subscription topic patterns on a client.
-#[derive(Debug, Clone, Eq, PartialEq, Default)]
+#[derive(Clone, Eq, PartialEq, Default)]
 pub struct Message {
     /// The destination topic
     pub topic: String,
@@ -105,6 +105,28 @@ pub struct Message {
     pub retain: bool,
     /// The message id
     pub mid: MessageId,
+}
+
+struct PayloadPrinter<'a>(&'a [u8]);
+impl<'a> std::fmt::Debug for PayloadPrinter<'a> {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match std::str::from_utf8(&self.0) {
+            Ok(payload) => payload.fmt(fmt),
+            Err(_) => fmt.write_fmt(format_args!("{:02X?}", self.0)),
+        }
+    }
+}
+
+impl std::fmt::Debug for Message {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        fmt.debug_struct("Message")
+            .field("topic", &self.topic)
+            .field("payload", &PayloadPrinter(&self.payload))
+            .field("qos", &self.qos)
+            .field("retain", &self.retain)
+            .field("mid", &self.mid)
+            .finish()
+    }
 }
 
 impl Callbacks for Handler {
@@ -467,5 +489,35 @@ impl Client {
             max_reconnect_delay,
             use_exponential_backoff,
         )
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn message_debug() {
+        let msg_utf8 = Message {
+            topic: "topic".to_string(),
+            payload: b"hello".to_vec(),
+            qos: QoS::AtMostOnce,
+            retain: false,
+            mid: 1,
+        };
+        assert_eq!(format!("{msg_utf8:?}"),
+            "Message { topic: \"topic\", payload: \"hello\", \
+            qos: AtMostOnce, retain: false, mid: 1 }");
+
+        let msg_bin = Message {
+            topic: "topic".to_string(),
+            payload: vec![0x01, 0xa0, 0xc0],
+            qos: QoS::AtMostOnce,
+            retain: false,
+            mid: 1,
+        };
+        assert_eq!(format!("{msg_bin:?}"),
+            "Message { topic: \"topic\", payload: [01, A0, C0], \
+            qos: AtMostOnce, retain: false, mid: 1 }");
     }
 }
