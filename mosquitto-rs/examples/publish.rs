@@ -35,7 +35,7 @@ fn main() -> Result<(), Error> {
             self.bump_and_print();
         }
 
-        fn on_disconnect(&self, _: &mut Mosq, reason: i32) {
+        fn on_disconnect(&self, _: &mut Mosq, reason: ReasonCode) {
             println!("disconnected: reason={reason}");
             self.bump_and_print();
         }

@@ -1,5 +1,6 @@
 use crate::lowlevel::sys::{mosq_err_t, mosq_opt_t};
 use crate::lowlevel::{Callbacks, MessageId, Mosq, QoS};
+use crate::ReasonCode;
 use crate::{ConnectionStatus, Error, PasswdCallback};
 use async_channel::{bounded, unbounded, Receiver, Sender};
 use std::collections::HashMap;
@@ -9,11 +10,28 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
 
+/// An event received either from the broker, or from
+/// the thread that is managing the connection to the
+/// broker.
+#[derive(Debug, Clone)]
+pub enum Event {
+    /// A message was received from one of your subscriptions.
+    Message(Message),
+    /// The session was (re)connected.
+    /// You will need to (re-)subscribe to topics of
+    /// interest.
+    Connected(ConnectionStatus),
+    /// The session was disconnected.
+    /// For unexpected disconnects, the client will
+    /// automatically try to reconnect.
+    Disconnected(ReasonCode),
+}
+
 struct Handler {
     connect: Mutex<Option<Sender<ConnectionStatus>>>,
     mids: Mutex<HashMap<MessageId, Sender<MessageId>>>,
-    subscriber_tx: Mutex<Sender<Message>>,
-    subscriber_rx: Mutex<Option<Receiver<Message>>>,
+    subscriber_tx: Mutex<Option<Sender<Event>>>,
+    subscriber_rx: Mutex<Option<Receiver<Event>>>,
 }
 
 impl Handler {
@@ -22,7 +40,7 @@ impl Handler {
         Self {
             connect: Mutex::new(None),
             mids: Mutex::new(HashMap::new()),
-            subscriber_tx: Mutex::new(tx),
+            subscriber_tx: Mutex::new(Some(tx)),
             subscriber_rx: Mutex::new(Some(rx)),
         }
     }
@@ -129,14 +147,31 @@ impl std::fmt::Debug for Message {
     }
 }
 
+impl Handler {
+    fn dispatch_event(&self, client: &mut Mosq, event: Event) {
+        match self.subscriber_tx.lock().unwrap().as_ref() {
+            Some(tx) => {
+                if tx.try_send(event).is_err() {
+                    let _ = client.disconnect();
+                }
+            }
+            None => {
+                let _ = client.disconnect();
+            }
+        }
+    }
+}
+
 impl Callbacks for Handler {
     fn on_connect(&self, client: &mut Mosq, reason: ConnectionStatus) {
         let mut connect = self.connect.lock().unwrap();
+        log::trace!("connected: {reason}");
         if let Some(connect) = connect.take() {
             if connect.try_send(reason).is_err() {
                 let _ = client.disconnect();
             }
         }
+        self.dispatch_event(client, Event::Connected(reason));
     }
 
     fn on_publish(&self, client: &mut Mosq, mid: MessageId) {
@@ -172,6 +207,16 @@ impl Callbacks for Handler {
         }
     }
 
+    fn on_disconnect(&self, client: &mut Mosq, reason: ReasonCode) {
+        self.dispatch_event(client, Event::Disconnected(reason));
+        log::trace!("client disconnected with reason={reason}");
+        if !reason.is_unexpected_disconnect() {
+            // mosquitto won't auto-reconnect in this case,
+            // so we need to signal to our consumer that we are done.
+            self.subscriber_tx.lock().unwrap().take();
+        }
+    }
+
     fn on_message(
         &self,
         client: &mut Mosq,
@@ -188,9 +233,7 @@ impl Callbacks for Handler {
             qos,
             retain,
         };
-        if self.subscriber_tx.lock().unwrap().try_send(m).is_err() {
-            let _ = client.disconnect();
-        }
+        self.dispatch_event(client, Event::Message(m));
     }
 }
 
@@ -342,7 +385,7 @@ impl Client {
     /// This method can be called only once; the first time it returns
     /// the channel and subsequently it no longer has the channel
     /// receiver to retur, so will yield None.
-    pub fn subscriber(&self) -> Option<Receiver<Message>> {
+    pub fn subscriber(&self) -> Option<Receiver<Event>> {
         let handlers = self.mosq.get_callbacks();
         let x = handlers.subscriber_rx.lock().unwrap().take();
         x
@@ -505,9 +548,11 @@ mod test {
             retain: false,
             mid: 1,
         };
-        assert_eq!(format!("{msg_utf8:?}"),
+        assert_eq!(
+            format!("{msg_utf8:?}"),
             "Message { topic: \"topic\", payload: \"hello\", \
-            qos: AtMostOnce, retain: false, mid: 1 }");
+            qos: AtMostOnce, retain: false, mid: 1 }"
+        );
 
         let msg_bin = Message {
             topic: "topic".to_string(),
@@ -516,8 +561,10 @@ mod test {
             retain: false,
             mid: 1,
         };
-        assert_eq!(format!("{msg_bin:?}"),
+        assert_eq!(
+            format!("{msg_bin:?}"),
             "Message { topic: \"topic\", payload: [01, A0, C0], \
-            qos: AtMostOnce, retain: false, mid: 1 }");
+            qos: AtMostOnce, retain: false, mid: 1 }"
+        );
     }
 }

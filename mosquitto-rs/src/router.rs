@@ -333,6 +333,10 @@ impl<S: Clone + Send + Sync + 'static> MqttRouter<S> {
 
         Ok(matched.value.call(params, message, state).await?)
     }
+
+    pub fn client(&self) -> &Client {
+        &self.client
+    }
 }
 
 /// A helper to deserialize from a string into any type that

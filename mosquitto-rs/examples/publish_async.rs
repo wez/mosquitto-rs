@@ -22,8 +22,8 @@ fn main() -> Result<(), Error> {
             .await?;
         println!("published");
 
-        if let Ok(msg) = subscriptions.recv().await {
-            println!("msg: {msg:?}");
+        if let Ok(event) = subscriptions.recv().await {
+            println!("event: {event:?}");
         }
 
         Ok(())

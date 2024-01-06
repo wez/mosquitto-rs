@@ -1,6 +1,6 @@
 [package]
 name = "mosquitto-rs"
-version = "0.9.1"
+version = "0.10.0"
 authors = ["Wez Furlong"]
 edition = "2021"
 readme = "README.md"
@@ -22,12 +22,13 @@ router = ["dep:matchit", "dep:serde_json", "dep:serde", "dep:anyhow"]
 async-channel = "2.1"
 lazy_static = "1.4"
 libc = "0.2"
-libmosquitto-sys = {version="0.2.2", path="../libmosquitto-sys", default-features=false }
+libmosquitto-sys = {version="0.2.3", path="../libmosquitto-sys", default-features=false }
 matchit = {version="0.7.3", optional=true}
 serde_json = {version="1.0", optional=true}
 serde = {version="1.0", features=["derive"], optional=true}
 thiserror = "1.0"
 anyhow = {version="1.0", optional=true}
+log = "0.4.20"
 
 [dev-dependencies]
 anyhow = "1.0"

@@ -353,6 +353,7 @@ impl<CB: Callbacks + Send + Sync> Mosq<CB> {
                 self.m,
                 Some(CallbackWrapper::<CB>::unsubscribe),
             );
+            sys::mosquitto_log_callback_set(self.m, Some(bridge_logs));
         }
         self
     }
@@ -554,6 +555,34 @@ fn path_to_cstring<P: AsRef<Path>>(p: Option<P>) -> Result<Option<CString>, Erro
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct ReasonCode(pub c_int);
+
+impl ReasonCode {
+    /// Returns true if the reason represents an unexpected disconnect
+    pub fn is_unexpected_disconnect(&self) -> bool {
+        self.0 != 0
+    }
+}
+
+impl std::fmt::Display for ReasonCode {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let desc = unsafe { sys::mosquitto_reason_string(self.0) };
+        if desc.is_null() {
+            write!(fmt, "REASON code {}", self.0)
+        } else {
+            let desc = unsafe { CStr::from_ptr(desc) };
+            write!(fmt, "REASON code {}: {}", self.0, desc.to_string_lossy())
+        }
+    }
+}
+
+impl std::fmt::Debug for ReasonCode {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        std::fmt::Display::fmt(self, fmt)
+    }
+}
+
 /// Represents the status of the connection attempt.
 /// The embedded status code value depends on the protocol version
 /// that was setup for the client.
@@ -624,7 +653,7 @@ impl<T: Callbacks> CallbackWrapper<T> {
     unsafe extern "C" fn disconnect(m: *mut sys::mosquitto, cb: *mut c_void, rc: c_int) {
         let cb = Self::resolve_self(cb);
         with_transient_client(m, |client| {
-            cb.cb.on_disconnect(client, rc);
+            cb.cb.on_disconnect(client, ReasonCode(rc));
         });
     }
 
@@ -734,7 +763,7 @@ pub trait Callbacks {
     fn on_connect(&self, _client: &mut Mosq, _reason: ConnectionStatus) {}
 
     /// Called when the broker has received the DISCONNECT command
-    fn on_disconnect(&self, _client: &mut Mosq, _reason: c_int) {}
+    fn on_disconnect(&self, _client: &mut Mosq, _reason: ReasonCode) {}
 
     /// Called when the message identifier by `mid` has been sent
     /// to the broker successfully.
@@ -804,6 +833,24 @@ impl<CB: Callbacks + Send + Sync> Drop for Mosq<CB> {
             sys::mosquitto_destroy(self.m);
         }
     }
+}
+
+unsafe extern "C" fn bridge_logs(
+    _m: *mut sys::mosquitto,
+    _: *mut c_void,
+    level: c_int,
+    message: *const c_char,
+) {
+    use log::Level;
+    let level = match level as u32 {
+        libmosquitto_sys::MOSQ_LOG_NOTICE | libmosquitto_sys::MOSQ_LOG_INFO => Level::Info,
+        libmosquitto_sys::MOSQ_LOG_WARNING => Level::Warn,
+        libmosquitto_sys::MOSQ_LOG_ERR => Level::Error,
+        libmosquitto_sys::MOSQ_LOG_DEBUG => Level::Debug,
+        _ => Level::Trace,
+    };
+    let message = CStr::from_ptr(message).to_string_lossy();
+    log::log!(level, "{message}");
 }
 
 #[cfg(test)]
