@@ -5,6 +5,18 @@
 #![allow(non_upper_case_globals)]
 #![allow(clippy::unreadable_literal)]
 
+pub const MOSQ_LOG_NONE: u32 = 0;
+pub const MOSQ_LOG_INFO: u32 = 1;
+pub const MOSQ_LOG_NOTICE: u32 = 2;
+pub const MOSQ_LOG_WARNING: u32 = 4;
+pub const MOSQ_LOG_ERR: u32 = 8;
+pub const MOSQ_LOG_DEBUG: u32 = 16;
+pub const MOSQ_LOG_SUBSCRIBE: u32 = 32;
+pub const MOSQ_LOG_UNSUBSCRIBE: u32 = 64;
+pub const MOSQ_LOG_WEBSOCKETS: u32 = 128;
+pub const MOSQ_LOG_INTERNAL: u32 = 2147483648;
+pub const MOSQ_LOG_ALL: u32 = 4294967295;
+pub const MOSQ_MQTT_ID_MAX_LENGTH: u32 = 23;
 #[repr(i32)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum mosq_err_t {

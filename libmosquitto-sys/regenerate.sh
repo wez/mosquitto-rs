@@ -10,5 +10,6 @@ bindgen binding.h -o src/lib.rs \
   --default-enum-style rust \
   --generate=functions,types,vars \
   --allowlist-function="(mqtt|mosq).*" \
-  --allowlist-type="(mqtt|mosq).*" \
+  --allowlist-type="(mqtt|mosq|MOSQ).*" \
+  --allowlist-var="MOSQ.*" \
   -- -Imosquitto/include
