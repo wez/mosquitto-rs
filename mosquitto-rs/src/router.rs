@@ -6,6 +6,7 @@ use serde_json::Value as JsonValue;
 use std::future::Future;
 use std::pin::Pin;
 use std::str::FromStr;
+use std::sync::Arc;
 use thiserror::Error;
 
 /// An error returned from the Router and related types
@@ -155,9 +156,7 @@ where
     S: Clone + Send + Sync,
 {
     func: Box<
-        dyn Fn(Request<S>) -> Pin<Box<dyn Future<Output = MqttHandlerResult> + Send + Sync>>
-            + Send
-            + Sync,
+        dyn Fn(Request<S>) -> Pin<Box<dyn Future<Output = MqttHandlerResult> + Send>> + Send + Sync,
     >,
 }
 
@@ -173,7 +172,7 @@ impl<S: Clone + Send + Sync + 'static> Dispatcher<S> {
 
     pub fn new(
         func: Box<
-            dyn Fn(Request<S>) -> Pin<Box<dyn Future<Output = MqttHandlerResult> + Send + Sync>>
+            dyn Fn(Request<S>) -> Pin<Box<dyn Future<Output = MqttHandlerResult> + Send>>
                 + Send
                 + Sync,
         >,
@@ -197,15 +196,16 @@ macro_rules! impl_make_dispatcher {
 
 impl<F, S, Fut, $($ty,)* $last> MakeDispatcher<($($ty,)* $last,), S> for F
 where
-    F: (Fn($($ty,)* $last) -> Fut) + Clone + Send + Sync + 'static,
-    Fut: Future<Output = MqttHandlerResult> + Send + Sync,
+    F: (Fn($($ty,)* $last) -> Fut) + Send + Sync + 'static,
+    Fut: Future<Output = MqttHandlerResult> + Send ,
     S: Clone + Send + Sync + 'static,
     $( $ty: FromRequest<S>, )*
     $last: FromRequest<S>
 {
     #[allow(non_snake_case)]
     fn make_dispatcher(func: F) -> Dispatcher<S> {
-        let wrap: Box<dyn Fn(Request<S>) -> Pin<Box<dyn Future<Output = MqttHandlerResult> + Send + Sync>> + Send + Sync> =
+        let func = Arc::new(func);
+        let wrap: Box<dyn Fn(Request<S>) -> Pin<Box<dyn Future<Output = MqttHandlerResult> + Send>> + Send + Sync> =
             Box::new(move |request: Request<S>| {
                 let func = func.clone();
                 Box::pin(async move {
