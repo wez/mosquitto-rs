@@ -506,6 +506,28 @@ impl Client {
             .configure_tls(ca_file, ca_path, cert_file, key_file, pw_callback)
     }
 
+    /// Disables verification of the server hostname in the server certificate.
+    /// If this is disabled, it is impossible to guarantee that the host you
+    /// are connecting to is not impersonating your server.  This can be useful
+    /// in initial server testing, but makes it possible for a malicious third
+    /// party to impersonate your server through DNS spoofing, for example.  Do
+    /// not use this function in a real system.  Disabling this makes the
+    /// connection encryption pointless.  Must be called before connect.
+    pub fn disable_tls_hostname_validation(&self) -> Result<(), Error> {
+        self.mosq.set_tls_insecure(true)
+    }
+
+    /// Enables verification of the server hostname in the server certificate.
+    /// By default this validation is enabled. If this is disabled, it is
+    /// impossible to guarantee that the host you are connecting to is not
+    /// impersonating your server.  This can be useful in initial server
+    /// testing, but makes it possible for a malicious third party to
+    /// impersonate your server through DNS spoofing, for example. Must be
+    /// called before connect.
+    pub fn enable_tls_hostname_validation(&self) -> Result<(), Error> {
+        self.mosq.set_tls_insecure(false)
+    }
+
     /// Controls reconnection behavior when running in the message loop.
     /// By default, if a client is unexpectedly disconnected, mosquitto will
     /// try to reconnect.  The default reconnect parameters are to retry once
